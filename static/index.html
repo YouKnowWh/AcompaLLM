@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Memory 控制台</title>
+  <style>
+    :root{--bg:#0d1117;--surface:#161b22;--card:#1c2333;--border:#30363d;--accent:#58a6ff;--accent2:#3fb950;--warn:#f0883e;--danger:#f85149;--text:#e6edf3;--muted:#8b949e;--radius:10px;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;}
+    .topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;gap:8px;height:56px;position:sticky;top:0;z-index:10;}
+    .logo{font-weight:700;font-size:16px;color:var(--accent);margin-right:20px;}
+    .tab-btn{background:none;border:none;color:var(--muted);padding:8px 14px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;transition:all .15s;}
+    .tab-btn:hover{background:rgba(88,166,255,.08);color:var(--text);}
+    .tab-btn.active{background:rgba(88,166,255,.12);color:var(--accent);}
+    .status-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background .3s;}
+    .status-dot.ok{background:var(--accent2);box-shadow:0 0 6px var(--accent2);}
+    .status-dot.err{background:var(--danger);}
+    .status-label{font-size:12px;color:var(--muted);}
+    .main{flex:1;padding:28px 24px;max-width:900px;width:100%;margin:0 auto;}
+    .tab-panel{display:none;}.tab-panel.active{display:block;}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;margin-bottom:18px;}
+    .card-title{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:18px;}
+    .field{margin-bottom:16px;}.field:last-child{margin-bottom:0;}
+    label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px;}
+    .input-wrap{position:relative;}
+    input[type=text],input[type=password],input[type=number],textarea{width:100%;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;transition:border-color .15s;outline:none;}
+    input:focus,textarea:focus{border-color:var(--accent);}
+    textarea{resize:vertical;min-height:90px;font-family:inherit;}
+    .eye-btn{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;font-size:16px;line-height:1;}
+    .eye-btn:hover{color:var(--text);}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    @media(max-width:600px){.grid-2{grid-template-columns:1fr;}}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;}
+    .btn-primary{background:var(--accent);color:#0d1117;}.btn-primary:hover{filter:brightness(1.1);}
+    .btn-secondary{background:var(--surface);border:1px solid var(--border);color:var(--text);}.btn-secondary:hover{border-color:var(--accent);color:var(--accent);}
+    .btn-success{background:var(--accent2);color:#0d1117;}.btn-success:hover{filter:brightness(1.1);}
+    .btn:disabled{opacity:.45;cursor:not-allowed;}
+    .btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;}
+    .alert{padding:12px 16px;border-radius:8px;font-size:13px;margin-top:14px;display:none;}
+    .alert.show{display:block;}
+    .alert-ok{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);color:var(--accent2);}
+    .alert-err{background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);color:var(--danger);}
+    .log{background:#010409;border:1px solid var(--border);border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:14px;max-height:300px;overflow-y:auto;white-space:pre-wrap;color:#8b949e;line-height:1.6;margin-top:16px;}
+    .chat-box{max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:4px 2px;margin-bottom:16px;}
+    .bubble{padding:12px 16px;border-radius:12px;max-width:82%;font-size:14px;line-height:1.65;}
+    .bubble.user{background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.2);align-self:flex-end;}
+    .bubble.assistant{background:var(--surface);border:1px solid var(--border);align-self:flex-start;}
+    .bubble.system-note{background:rgba(240,136,62,.07);border:1px solid rgba(240,136,62,.2);align-self:center;color:var(--warn);font-size:12px;max-width:100%;}
+    .bubble .role{font-size:11px;font-weight:700;margin-bottom:5px;color:var(--muted);text-transform:uppercase;}
+    .chip{display:inline-block;padding:3px 10px;border-radius:999px;background:rgba(88,166,255,.1);color:var(--accent);font-size:12px;border:1px solid rgba(88,166,255,.2);}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    .spinner{width:15px;height:15px;border:2px solid rgba(255,255,255,.15);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+    .hint{font-size:12px;color:var(--muted);margin-top:5px;}
+    .model-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+    .model-chip{padding:4px 11px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:12px;cursor:pointer;transition:all .15s;color:var(--muted);}
+    .model-chip:hover,.model-chip.selected{border-color:var(--accent);color:var(--accent);background:rgba(88,166,255,.06);}
+    .mono{font-family:'JetBrains Mono',monospace;font-size:12px;}
+    .thinking-block{background:rgba(88,166,255,.05);border:1px solid rgba(88,166,255,.15);border-radius:8px;margin-bottom:8px;font-size:13px;}
+    .thinking-header{display:flex;align-items:center;gap:6px;padding:8px 12px;cursor:pointer;color:var(--accent);font-size:12px;font-weight:600;user-select:none;}
+    .thinking-header:hover{background:rgba(88,166,255,.06);border-radius:8px;}
+    .thinking-body{padding:0 12px 10px;color:var(--muted);line-height:1.65;white-space:pre-wrap;display:none;}
+    .thinking-body.open{display:block;}
+    .thinking-arrow{transition:transform .2s;font-size:10px;}
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="logo">&#x1F9E0; AI Memory</span>
+  <button class="tab-btn active" data-tab="settings">&#x2699;&#xFE0F; 配置</button>
+  <button class="tab-btn" data-tab="chat">&#x1F4AC; 对话</button>
+  <button class="tab-btn" data-tab="rag">&#x1F4DA; 知识库</button>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+    <span class="status-label" id="connLabel">未连接</span>
+    <div class="status-dot" id="connDot"></div>
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="tab-panel active" id="tab-settings">
+    <div class="card">
+      <div class="card-title">&#x1F50C; 上游 API 配置</div>
+      <div class="field">
+        <label>API 地址 (Base URL)</label>
+        <input type="text" id="cfg-baseurl" placeholder="https://api.deepseek.com" />
+        <p class="hint">DeepSeek: https://api.deepseek.com &nbsp;|&nbsp; OpenAI: https://api.openai.com</p>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <div class="input-wrap">
+          <input type="password" id="cfg-apikey" placeholder="sk-xxxxxxxxxxxxxxxx" />
+          <button class="eye-btn" onclick="toggleEye('cfg-apikey',this)" title="显示/隐藏">&#x1F441;</button>
+        </div>
+        <p class="hint">Key 保存在浏览器本地 localStorage，不会上传至第三方</p>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>对外显示的模型名称 <span style="font-size:11px;font-weight:400;color:var(--accent)">← 下游客户端看到的唯一模型</span></label>
+          <input type="text" id="cfg-model-name" placeholder="ai-memory" />
+          <p class="hint">Chatbox 等客户端的模型列表只会显示这一个名称</p>
+        </div>
+        <div class="field">
+          <label>上游模型（实际调用）<span style="font-size:11px;font-weight:400;color:var(--warn)">← 服务端转发到此</span></label>
+          <input type="text" id="cfg-model" placeholder="deepseek-chat" />
+          <div class="model-list" id="model-presets"></div>
+          <div id="deep-think-row" style="display:none;align-items:center;gap:8px;margin-top:10px;">
+            <input type="checkbox" id="cfg-deep-think" style="width:auto;" />
+            <label for="cfg-deep-think" style="margin:0;color:var(--text);font-size:13px;">🧠 启用深度思考（仅在消息含「深思/深度分析」等关键词时触发）</label>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Temperature</label>
+        <input type="number" id="cfg-temp" value="0.7" min="0" max="2" step="0.1" />
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveSettings()">&#x1F4BE; 保存配置</button>
+        <button class="btn btn-secondary" onclick="testConn()">
+          <span id="test-spinner" style="display:none" class="spinner"></span>
+          <span id="test-label">&#x1F517; 测试连接</span>
+        </button>
+      </div>
+      <div class="alert alert-ok" id="save-ok">&#x2705; 配置已保存，已同步到服务端 .env 文件</div>
+      <div class="alert alert-err" id="save-err"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">&#x1F527; 工具默认配置</div>
+      <p class="hint" style="margin-bottom:14px;">以下设置作为<strong>服务端全局默认值</strong>，对所有经由本网关的请求（含 Chatbox 等客户端）生效。单次请求中显式传入的参数优先级更高。</p>
+      <div class="field">
+        <label>联网搜索默认行为</label>
+        <select id="cfg-web-search" style="width:100%;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">
+          <option value="auto">自动（根据问题关键词智能判断）</option>
+          <option value="true">总是启用（每次都联网搜索）</option>
+          <option value="false">总是禁用（永不联网，彻底阻止假搜索输出）</option>
+        </select>
+        <p class="hint">若模型总是输出"正在搜索…"等虚假过渡文字，可选「总是禁用」</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <input type="checkbox" id="cfg-rag-default" style="width:auto;" />
+        <label for="cfg-rag-default" style="margin:0;color:var(--text)">默认启用 RAG 知识库检索</label>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveSettings()">&#x1F4BE; 保存所有配置</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">&#x1F310; 本地网关地址</div>
+      <div class="field">
+        <label>客户端 Base URL（本网关地址）</label>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <input type="text" id="cfg-gateway" value="http://127.0.0.1:8000" />
+          <button class="btn btn-secondary" id="copy-btn" onclick="copyGateway()" style="white-space:nowrap">&#x1F4CB; 复制</button>
+        </div>
+        <p class="hint">在任意 OpenAI 兼容客户端中，将 Base URL 设为上面地址，API Key 填任意值即可</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">&#x1F4E1; 对外 API 地址</div>
+      <div class="field">
+        <label>网关主机<span style="margin-left:8px;font-size:11px;color:var(--accent);font-weight:400">← 客户端 Base URL 填此</span></label>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <input type="text" id="api-host" readonly class="mono" />
+          <button class="btn btn-secondary" id="copy-host-btn" onclick="copyHost()" style="white-space:nowrap">复制</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>网关 API Key<span style="margin-left:8px;font-size:11px;color:var(--warn);font-weight:400">← 客户端 API Key 填此（自动生成）</span></label>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <div class="input-wrap" style="flex:1">
+            <input type="password" id="api-gateway-key" readonly class="mono" />
+            <button class="eye-btn" onclick="toggleEye('api-gateway-key',this)" title="显示/隐藏">&#x1F441;</button>
+          </div>
+          <button class="btn btn-secondary" id="copy-gwkey-btn" onclick="copyWithFeedback(document.getElementById('api-gateway-key').value,'copy-gwkey-btn')" style="white-space:nowrap">复制</button>
+        </div>
+        <p class="hint">本地网关验证凭证，不传输到任何第三方</p>
+      </div>
+      <div class="field">
+        <label>标准对话接口（OpenAI 兼容）</label>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <input type="text" id="api-chatbox" readonly class="mono" />
+          <button class="btn btn-secondary" id="copy-chatbox-btn" onclick="copyChatboxApi()" style="white-space:nowrap">复制</button>
+        </div>
+        <p class="hint">支持非流式与流式（请求体携带 stream=true）</p>
+      </div>
+      <div class="field">
+        <label>专用流式接口（始终 SSE）</label>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <input type="text" id="api-stream" readonly class="mono" />
+          <button class="btn btn-secondary" id="copy-stream-btn" onclick="copyStreamApi()" style="white-space:nowrap">复制</button>
+        </div>
+        <p class="hint">无论请求体是否含 stream，均以 SSE 流式返回</p>
+      </div>
+      <div class="field">
+        <label>上游可用模型 <span id="models-status" style="font-size:11px;color:var(--muted);font-weight:400"></span></label>
+        <p class="hint" style="margin-bottom:6px">点击任意模型可将其设为「上游模型」字段的值，但下游依然只看到一个统一名称。</p>
+        <div id="models-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
+          <span style="color:var(--muted);font-size:12px">加载中…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-chat">
+    <div class="card">
+      <div class="card-title">&#x1F4AC; 对话测试</div>
+      <div class="chat-box" id="chat-box">
+        <div class="bubble system-note"><div class="role">提示</div>先在「配置」标签页填写 API Key，然后在此测试对话</div>
+      </div>
+      <div class="field">
+        <label>消息 <span style="color:var(--muted);font-weight:400">（Ctrl+Enter 发送）</span></label>
+        <textarea id="chat-input" placeholder="输入消息…"></textarea>
+      </div>
+      <div class="grid-2" style="margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="chat-search" style="width:auto;" />
+          <label for="chat-search" style="margin:0;color:var(--text)">启用网页搜索注入</label>
+        </div>
+        <input type="text" id="chat-search-query" placeholder="搜索关键词（可选）" />
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <input type="checkbox" id="chat-rag" style="width:auto;" />
+        <label for="chat-rag" style="margin:0;color:var(--text)">启用 RAG 记忆检索</label>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="send-btn" onclick="sendChat()">
+          <span id="send-spinner" style="display:none" class="spinner"></span>
+          <span>发送</span>
+        </button>
+        <button class="btn btn-secondary" onclick="clearChat()">&#x1F5D1; 清空对话</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">&#x1F4CB; 请求日志</div>
+      <div class="log" id="chat-log">等待请求…</div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-rag">
+    <div class="card">
+      <div class="card-title">&#x1F4E5; 录入文档片段</div>
+      <div class="field">
+        <label>内容（必填）</label>
+        <textarea id="rag-text" placeholder="粘贴需要 AI 记住的文本内容…" style="min-height:120px;"></textarea>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>标题（可选）</label>
+          <input type="text" id="rag-title" placeholder="例如：项目背景" />
+        </div>
+        <div class="field">
+          <label>来源（可选）</label>
+          <input type="text" id="rag-source" placeholder="例如：notion/项目文档" />
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-success" onclick="ragAdd()">&#x2795; 添加到记忆库</button>
+      </div>
+      <div class="alert alert-ok" id="rag-ok"></div>
+      <div class="alert alert-err" id="rag-err"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">&#x2139;&#xFE0F; 使用说明</div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.9;">
+        1. 粘贴需要 AI 长期记住的内容，点击「添加到记忆库」。<br>
+        2. 数据持久保存到本地 <span class="chip">./data/faiss.index</span>，重启后依然有效。<br>
+        3. 对话时勾选「启用 RAG 记忆检索」，相关片段会自动注入到请求中。<br>
+        4. 嵌入模型首次使用时自动从 HuggingFace 下载（约 100 MB）。
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const LS_KEY='aimem_cfg';
+const GATEWAY=()=>(document.getElementById('cfg-gateway').value||window.location.origin).trim().replace(/\/$/,'');
+const ts=()=>new Date().toLocaleTimeString();
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function flash(id,txt){const el=document.getElementById(id);if(txt)el.textContent=txt;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),4000);}
+function toggleEye(id,btn){const el=document.getElementById(id);el.type=el.type==='password'?'text':'password';btn.textContent=el.type==='password'?'\u{1F441}':'\u{1F648}';}
+document.querySelectorAll('.tab-btn').forEach(b=>{b.addEventListener('click',()=>{document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.getElementById('tab-'+b.dataset.tab).classList.add('active');});});
+function loadSettings(){try{const s=JSON.parse(localStorage.getItem(LS_KEY)||'{}');if(s.baseurl)document.getElementById('cfg-baseurl').value=s.baseurl;if(s.apikey)document.getElementById('cfg-apikey').value=s.apikey;if(s.modelname)document.getElementById('cfg-model-name').value=s.modelname;if(s.model)document.getElementById('cfg-model').value=s.model;if(s.temp)document.getElementById('cfg-temp').value=s.temp;if(s.gateway)document.getElementById('cfg-gateway').value=s.gateway;}catch(_){}}
+async function loadServerConfig(){try{const r=await fetch(GATEWAY()+'/v1/config');if(!r.ok)return;const j=await r.json();if(j.base_url&&!document.getElementById('cfg-baseurl').value)document.getElementById('cfg-baseurl').value=j.base_url;if(j.api_key_masked&&!document.getElementById('cfg-apikey').value)document.getElementById('cfg-apikey').value=j.api_key_masked;if(j.model_name)document.getElementById('cfg-model-name').value=j.model_name;if(j.default_model){document.getElementById('cfg-model').value=j.default_model;}if(j.tool_web_search){document.getElementById('cfg-web-search').value=j.tool_web_search;}if(j.tool_rag!==undefined){document.getElementById('cfg-rag-default').checked=!!j.tool_rag;}if(j.tool_deep_think!==undefined){document.getElementById('cfg-deep-think').checked=j.tool_deep_think!=='false';}}catch(_){}}
+async function saveSettings(){const cfg={baseurl:document.getElementById('cfg-baseurl').value.trim(),apikey:document.getElementById('cfg-apikey').value.trim(),modelname:document.getElementById('cfg-model-name').value.trim(),model:document.getElementById('cfg-model').value.trim(),temp:document.getElementById('cfg-temp').value,gateway:document.getElementById('cfg-gateway').value.trim()};localStorage.setItem(LS_KEY,JSON.stringify(cfg));const toolWs=document.getElementById('cfg-web-search').value;const toolRag=document.getElementById('cfg-rag-default').checked;const toolDt=document.getElementById('cfg-deep-think').checked?'auto':'false';try{const r=await fetch(GATEWAY()+'/v1/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:cfg.baseurl,api_key:cfg.apikey,model_name:cfg.modelname,default_model:cfg.model,tool_web_search:toolWs,tool_rag:toolRag,tool_deep_think:toolDt})});if(!r.ok){let msg;try{const j=await r.json();msg=j.detail||JSON.stringify(j);}catch(_){msg=await r.text();}throw new Error(msg);}flash('save-ok');}catch(e){document.getElementById('save-err').textContent='\u26A0 本地已保存，但同步服务端失败：'+e.message;flash('save-err');}}
+async function testConn(){const sp=document.getElementById('test-spinner'),lb=document.getElementById('test-label'),dot=document.getElementById('connDot'),lbl=document.getElementById('connLabel');sp.style.display='inline-block';lb.textContent='连接中…';dot.className='status-dot';lbl.textContent='连接中';try{const r=await fetch(GATEWAY()+'/health',{signal:AbortSignal.timeout(5000)});const j=await r.json();if(j.status==='ok'){dot.className='status-dot ok';lbl.textContent='已连接';lb.textContent='\u2705 连接成功';}else throw new Error(JSON.stringify(j));}catch(e){dot.className='status-dot err';lbl.textContent='连接失败';lb.textContent='\u274C '+e.message;}finally{sp.style.display='none';setTimeout(()=>{lb.textContent='\u{1F517} 测试连接';},3000);}}
+function copyGateway(){navigator.clipboard.writeText(document.getElementById('cfg-gateway').value.trim()).then(()=>{const b=document.getElementById('copy-btn');b.textContent='\u2705 已复制';setTimeout(()=>b.textContent='\u{1F4CB} 复制',2000);});}
+function updateApiDisplay(){
+  const base=GATEWAY();
+  document.getElementById('api-host').value=base;
+  document.getElementById('api-chatbox').value=base+'/v1/chat/completions';
+  document.getElementById('api-stream').value=base+'/v1/chat/stream';
+}
+async function loadPublicInfo(){
+  try{
+    const r=await fetch('/v1/public-info');
+    if(!r.ok) throw new Error('public-info not available');
+    const info=await r.json();
+    document.getElementById('api-host').value=info.base_url||'';
+    document.getElementById('api-chatbox').value=info.chat_url||'';
+    document.getElementById('api-stream').value=info.stream_url||'';
+    if(info.gateway_api_key)document.getElementById('api-gateway-key').value=info.gateway_api_key;
+    // 上游模型列表用单独端点，不暴露给下游的 /v1/models
+    loadModels((info.base_url||'')+'/v1/upstream-models');
+  }catch(_){
+    updateApiDisplay();
+    loadModels(GATEWAY()+'/v1/upstream-models');
+  }
+}
+async function loadModels(url){
+  const box=document.getElementById('models-list');
+  const presets=document.getElementById('model-presets');
+  const st=document.getElementById('models-status');
+  try{
+    const r=await fetch(url);
+    if(!r.ok)throw new Error('status '+r.status);
+    const j=await r.json();
+    const list=(j.data||[]).map(m=>m.id||m).filter(Boolean);
+    if(!list.length)throw new Error('empty');
+    const curModel=document.getElementById('cfg-model').value;
+    const makeChips=(containerId)=>list.map(id=>`<span class="model-chip${id===curModel?' selected':''}" onclick="selectModel('${id}')" data-mid="${id}" title="点击设为上游模型">${id}</span>`).join('');
+    box.innerHTML=makeChips('models-list');
+    presets.innerHTML=makeChips('model-presets');
+    const dtRow=document.getElementById('deep-think-row');if(dtRow)dtRow.style.display=j.reasoner_available===true?'flex':'none';
+    st.textContent='('+list.length+' 个上游可选，点击切换)';
+  }catch(e){
+    box.innerHTML='<span style="color:var(--muted);font-size:12px">获取失败，将在首次请求时自动检测</span>';
+    presets.innerHTML='<span style="color:var(--muted);font-size:12px">获取失败</span>';
+    st.textContent='';
+  }
+}
+function selectModel(id){
+  document.getElementById('cfg-model').value=id;
+  document.querySelectorAll('.model-chip[data-mid]').forEach(c=>c.classList.toggle('selected',c.dataset.mid===id));
+}
+function copyWithFeedback(text, btnId){
+  navigator.clipboard.writeText(text).then(()=>{const b=document.getElementById(btnId);const old=b.textContent;b.textContent='\u2705 已复制';setTimeout(()=>b.textContent=old,1500);});
+}
+function copyHost(){copyWithFeedback(document.getElementById('api-host').value,'copy-host-btn');}
+function copyChatboxApi(){copyWithFeedback(document.getElementById('api-chatbox').value,'copy-chatbox-btn');}
+function copyStreamApi(){copyWithFeedback(document.getElementById('api-stream').value,'copy-stream-btn');}
+const history=[];
+function chatLog(msg,cls=''){const el=document.getElementById('chat-log');const c={ok:'color:#3fb950',err:'color:#f85149',info:'color:#58a6ff'};el.innerHTML+=`<span style="color:#3fb950">[${ts()}]</span> <span style="${c[cls]||''}">${esc(msg)}</span>\n`;el.scrollTop=el.scrollHeight;}
+function addBubble(role,content,reasoning){
+  const box=document.getElementById('chat-box');
+  const d=document.createElement('div');
+  d.className='bubble '+role;
+  let inner=`<div class="role">${role==='user'?'你':'AI'}</div>`;
+  if(reasoning){
+    const uid='th'+Date.now();
+    inner+=`<div class="thinking-block"><div class="thinking-header" onclick="const b=document.getElementById('${uid}');const a=this.querySelector('.thinking-arrow');b.classList.toggle('open');a.style.transform=b.classList.contains('open')?'rotate(90deg)':'rotate(0deg)'"><span class="thinking-arrow">&#x25B6;</span>思考过程</div><div class="thinking-body" id="${uid}">${esc(reasoning)}</div></div>`;
+  }
+  inner+=esc(content);
+  d.innerHTML=inner;
+  box.appendChild(d);
+  box.scrollTop=box.scrollHeight;
+}
+function clearChat(){history.length=0;document.getElementById('chat-box').innerHTML='';document.getElementById('chat-log').textContent='已清空\n';}
+document.getElementById('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();sendChat();}});
+async function sendChat(){const input=document.getElementById('chat-input');const text=input.value.trim();if(!text)return;const s=JSON.parse(localStorage.getItem(LS_KEY)||'{}');const model=document.getElementById('cfg-model').value||s.model||'deepseek-chat';const temperature=parseFloat(document.getElementById('cfg-temp').value||s.temp||'0.7');const useSearch=document.getElementById('chat-search').checked;const sq=document.getElementById('chat-search-query').value.trim();const useRag=document.getElementById('chat-rag').checked;history.push({role:'user',content:text});addBubble('user',text);input.value='';const btn=document.getElementById('send-btn');btn.disabled=true;document.getElementById('send-spinner').style.display='inline-block';const body={model,temperature,messages:[...history],use_search:useSearch,search_query:useSearch?(sq||text):undefined,use_rag:useRag,rag_query:useRag?text:undefined};const ep=GATEWAY()+'/v1/chat/completions';chatLog('POST '+ep,'info');try{const r=await fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();chatLog('状态: '+r.status,r.ok?'ok':'err');if(!r.ok)throw new Error(j.detail||JSON.stringify(j));const reply=j.choices?.[0]?.message?.content||JSON.stringify(j);
+    const reasoning=j.choices?.[0]?.message?.reasoning_content||'';
+    history.push({role:'assistant',content:reply});
+    addBubble('assistant',reply,reasoning);
+    chatLog('完成，token: '+(j.usage?.total_tokens??'?')+(reasoning?' [含思考过程]':''),'ok');}catch(e){chatLog('错误: '+e.message,'err');addBubble('system-note','请求失败: '+e.message);}finally{btn.disabled=false;document.getElementById('send-spinner').style.display='none';}}
+async function ragAdd(){const text=document.getElementById('rag-text').value.trim();const title=document.getElementById('rag-title').value.trim();const source=document.getElementById('rag-source').value.trim();if(!text){alert('请填写文档内容');return;}try{const r=await fetch(GATEWAY()+'/v1/rag/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,title,source})});const j=await r.json();if(!r.ok)throw new Error(j.detail||JSON.stringify(j));document.getElementById('rag-text').value='';document.getElementById('rag-ok').textContent='\u2705 '+(j.message||'已添加');flash('rag-ok');}catch(e){document.getElementById('rag-err').textContent='\u274C '+e.message;flash('rag-err');}}
+loadSettings();
+loadPublicInfo();
+loadServerConfig();
+setTimeout(testConn,800);
+</script>
+</body>
+</html>
