@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Memory</title>
+  <title>AcompaLLM</title>
   <script>
     document.documentElement.style.zoom = 1;
   </script>
@@ -1021,6 +1021,55 @@
       color: var(--danger); font-size: 13px; cursor: pointer; transition: all .12s;
     }
     .btn-danger:hover { background: rgba(248,81,73,.2); }
+    /* ── 知识库管理 ─────────────────────────────────── */
+    .kb-topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .kb-topbar-title { font-weight:600; font-size:15px; }
+    .kb-add-form { background:var(--card); border:1px solid var(--border); border-radius:var(--r-sm); padding:14px 14px 12px; margin-bottom:14px; }
+    .kb-add-form-title { font-size:13px; font-weight:600; margin-bottom:10px; }
+    /* ── 拖拽上传区 ─────────────────────────────────── */
+    .kb-drop-zone { border:2px dashed var(--border); border-radius:var(--r-sm); padding:22px 16px; text-align:center; cursor:pointer; transition:border-color .15s, background .15s; }
+    .kb-drop-zone:hover, .kb-drop-zone.drag-over { border-color:var(--accent); background:var(--accent-bg); }
+    .kb-drop-icon { font-size:26px; color:var(--muted); margin-bottom:6px; }
+    .kb-drop-text { font-size:13px; color:var(--text); }
+    .kb-drop-hint { font-size:11px; color:var(--muted); margin-top:4px; }
+    .kb-file-chip { display:inline-flex; align-items:center; gap:5px; background:var(--hover); border:1px solid var(--border); border-radius:4px; padding:3px 8px; font-size:12px; margin:3px 3px 0 0; max-width:100%; overflow:hidden; }
+    .kb-file-chip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+    .kb-file-chip button { background:none; border:none; color:var(--muted); cursor:pointer; padding:0 0 0 2px; font-size:13px; line-height:1; flex-shrink:0; }
+    .kb-file-chip button:hover { color:var(--danger); }
+    /* ── 文件导入行（选文件列表） -------------------------------------- */
+    .kb-file-row { border:1px solid var(--border); border-radius:var(--r-sm); padding:8px 10px; margin-top:6px; }
+    .kb-file-row-top { display:flex; align-items:center; gap:8px; }
+    .kb-file-row-name { flex:1; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
+    .kb-file-row-del { background:none; border:none; color:var(--muted); cursor:pointer; padding:0; font-size:12px; line-height:1; flex-shrink:0; }
+    .kb-file-row-del:hover { color:var(--danger); }
+    .kb-file-bar { height:4px; border-radius:2px; background:var(--border); margin-top:6px; overflow:hidden; }
+    .kb-file-bar-fill { height:100%; border-radius:2px; }
+    .kb-file-bar-fill.loading { width:100%; background:linear-gradient(90deg,var(--accent-bg) 20%,var(--accent) 50%,var(--accent-bg) 80%); background-size:200% 100%; animation:kb-shimmer 1.2s linear infinite; }
+    .kb-file-bar-fill.done { width:100%; background:var(--green,#2da44e); }
+    @keyframes kb-shimmer { 0%{background-position:200% 0} 100%{background-position:0% 0} }
+    .kb-file-meta { font-size:11px; color:var(--muted); margin-top:4px; }
+    .kb-file-err  { font-size:11px; color:var(--danger); margin-top:4px; }
+    .kb-card { border:1px solid var(--border); border-radius:var(--r-sm); overflow:hidden; margin-bottom:10px; }
+    .kb-card-hd { display:flex; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; user-select:none; background:var(--card); }
+    .kb-card-hd:hover { background:var(--hover); }
+    .kb-chevron { font-size:10px; color:var(--muted); transition:transform .18s; flex-shrink:0; }
+    .kb-card-hd.open .kb-chevron { transform:rotate(90deg); }
+    .kb-card-name { font-size:13px; font-weight:500; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .kb-card-badge { background:var(--accent-bg); color:var(--accent); font-size:11px; border-radius:10px; padding:1px 8px; white-space:nowrap; flex-shrink:0; }
+    .kb-card-acts { display:flex; gap:4px; flex-shrink:0; }
+    .kb-card-body { border-top:1px solid var(--border); padding:0 12px; background:var(--bg); }
+    .kb-src-row { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--border); }
+    .kb-src-row:last-of-type { border-bottom:none; }
+    .kb-src-icon { font-size:15px; flex-shrink:0; }
+    .kb-src-info { flex:1; min-width:0; }
+    .kb-src-name { font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .kb-src-meta { font-size:11px; color:var(--muted); margin-top:2px; }
+    .kb-src-del { background:none; border:none; color:var(--muted); cursor:pointer; padding:2px 5px; border-radius:4px; font-size:14px; line-height:1; }
+    .kb-src-del:hover { color:var(--danger); background:rgba(248,81,73,.12); }
+    .kb-card-footer { padding:8px 0; }
+    .kb-more-btn { font-size:12px; color:var(--accent); cursor:pointer; border:none; background:none; padding:0; }
+    .kb-more-btn:hover { text-decoration:underline; }
+    .kb-empty { color:var(--muted); font-size:13px; text-align:center; padding:28px 0; }
   </style>
 </head>
 <body>
@@ -1033,7 +1082,7 @@
         <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z"/>
         <path d="M5.5 8.5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5S9.38 11 8 11s-2.5-1.12-2.5-2.5z"/>
       </svg>
-      <span>AI Memory</span>
+      <span>AcompaLLM</span>
     </div>
     <div class="tb-spacer"></div>
     <button class="tb-btn" title="最小化" onclick="api()?.win_minimize()">
@@ -1054,7 +1103,7 @@
   <!-- ── Icon bar ───────────────────────────────────────────────────────────── -->
   <div id="iconBar">
     <!-- 品牌图标（点阵 AI 风格，不可点击） -->
-    <div class="ib-logo" title="AI Memory">
+    <div class="ib-logo" title="AcompaLLM">
       <svg viewBox="0 0 20 20" fill="none" stroke="var(--accent)" stroke-width="1.4">
         <circle cx="4"  cy="4"  r="1.4" fill="var(--accent)" stroke="none"/>
         <circle cx="10" cy="4"  r="1.4" fill="var(--accent)" stroke="none"/>
@@ -1287,28 +1336,68 @@
         </div>
         <!-- Memory tab -->
         <div id="tabMemory" hidden>
-          <div class="field">
-            <label>内容 (必填)</label>
-            <textarea id="mText" placeholder="粘贴需要 AI 长期记住的内容…" rows="5"></textarea>
+          <!-- 顶部栏 -->
+          <div class="kb-topbar">
+            <span class="kb-topbar-title">知识库</span>
+            <button class="btn-secondary" style="font-size:12px;padding:4px 12px" onclick="kbShowAddForm(null)">＋ 添加</button>
           </div>
-          <div class="grid-2">
-            <div class="field">
-              <label>标题 (可选)</label>
-              <input type="text" id="mTitle" placeholder="例如：项目背景" />
+
+          <!-- 内联 添加/导入 表单 -->
+          <div id="kbAddForm" hidden class="kb-add-form">
+            <div class="kb-add-form-title" id="kbAddFormTitle">新建知识库</div>
+
+            <!-- Step 1：命名 + 选模型（仅新建时显示） -->
+            <div id="kbStep1">
+              <div class="field" style="margin-bottom:10px">
+                <label>知识库名称</label>
+                <input id="kbAddName" type="text" placeholder="例如：道德经" />
+              </div>
+              <div class="field" style="margin-bottom:14px">
+                <label>嵌入模型</label>
+                <select id="kbEmbedModel" style="width:100%">
+                  <option value="BAAI/bge-small-zh-v1.5">bge-small-zh-v1.5（已下载 · 推荐）</option>
+                  <option value="BAAI/bge-base-zh-v1.5">bge-base-zh-v1.5（精度更高）</option>
+                  <option value="BAAI/bge-large-zh-v1.5">bge-large-zh-v1.5（最高精度 · 较慢）</option>
+                  <option value="shibing624/text2vec-base-chinese">text2vec-base-chinese</option>
+                </select>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn-primary" onclick="kbNextStep()">下一步 →</button>
+                <button class="btn-secondary" onclick="kbHideAddForm()">取消</button>
+              </div>
+              <div id="kbStep1Alert" style="margin-top:6px;min-height:16px;font-size:12px"></div>
             </div>
-            <div class="field">
-              <label>来源 (可选)</label>
-              <input type="text" id="mSource" placeholder="例如：notion/文档" />
+
+            <!-- Step 2：文件选择 + 导入（追加时直接显示） -->
+            <div id="kbStep2" hidden>
+              <!-- 拖拽 / 点击上传区 -->
+              <div id="kbDropZone" class="kb-drop-zone" onclick="kbClickDrop()" ondragover="kbDragOver(event)" ondragleave="kbDragLeave(event)" ondrop="kbDrop(event)">
+                <div class="kb-drop-icon">↑</div>
+                <div class="kb-drop-text">将文件拖放到此处，或点击浏览</div>
+                <div class="kb-drop-hint">支持 .txt .md .pdf .docx</div>
+              </div>
+              <!-- 已选文件列表 -->
+              <div id="kbFileList" style="margin-top:8px"></div>
+              <!-- URL 输入（可选） -->
+              <details style="margin-top:10px">
+                <summary style="font-size:12px;color:var(--muted);cursor:pointer;user-select:none">导入网页 URL（可选）</summary>
+                <div class="field" style="margin-top:8px">
+                  <input id="kbUrl" type="text" placeholder="https://…" />
+                </div>
+              </details>
+              <div style="display:flex;gap:8px;margin-top:12px">
+                <button class="btn-primary" id="kbIngestBtn" onclick="kbIngest()">开始导入</button>
+                <button class="btn-secondary" onclick="kbHideAddForm()">取消</button>
+              </div>
+              <div id="kbAlert" style="margin-top:8px;min-height:18px;font-size:12px"></div>
             </div>
           </div>
-          <button class="btn-primary" onclick="addMemory()" style="margin-top:4px">+ 添加到知识库</button>
-          <div id="memAlert"></div>
-          <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-            <p style="font-size:12px;color:var(--muted);line-height:1.8">
-              知识库使用本地 FAISS 向量索引，数据保存在 <code style="font-size:11px">./data/faiss.index</code>。
-              首次使用时会自动下载嵌入模型（约 100 MB）。
-            </p>
-          </div>
+
+          <!-- 空状态 -->
+          <div id="kbEmpty" class="kb-empty" hidden>暂无知识库，点击"＋ 添加"开始导入文档</div>
+
+          <!-- 集合卡片列表 -->
+          <div id="kbColList"></div>
         </div>
       </div><!-- .sv-body -->
       <div class="sv-footer">
@@ -1319,7 +1408,7 @@
 
     <div id="chatView" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
     <div class="chat-header">
-      <span id="chatTitle">AI Memory</span>
+      <span id="chatTitle">AcompaLLM</span>
       <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
         <button id="headerClearBtn" hidden onclick="clearCurrentConv()">清空对话</button>
         <div class="model-selector-wrap" id="modelSelectorWrap" style="display:none">
@@ -1338,7 +1427,7 @@
       <div id="msgList">
         <!-- filled by JS -->
         <div id="emptyState">
-          <div class="empty-title">AI Memory</div>
+          <div class="empty-title">AcompaLLM</div>
           <div class="empty-hint">开始一段新对话</div>
           <div class="empty-tips">
             <span class="tip-chip" onclick="insertTip(this)">帮我写一封邮件</span>
@@ -1704,7 +1793,7 @@ async function deleteConvFromModal() {
     S.convId = null;
     clearMsgList();
     showEmpty(true);
-    updateTitle('AI Memory');
+    updateTitle('AcompaLLM');
     document.getElementById('headerClearBtn').hidden = true;
   }
 }
@@ -2264,7 +2353,9 @@ function switchSettingsTab(name, btn) {
   document.getElementById('tabApi').hidden    = name !== 'api';
   document.getElementById('tabTools').hidden  = name !== 'tools';
   document.getElementById('tabMemory').hidden = name !== 'memory';
-  // 连接/保存按鈕：api tab 才显示测试连接，memory tab 隐藏整个footer
+  // 切换到知识库 tab 时自动刷新集合列表
+  if (name === 'memory') kbLoadList();
+  // 连接/保存按钮：api tab 才显示测试连接，memory tab 隐藏整个footer
   const footer = document.querySelector('.sv-footer');
   if (footer) footer.style.display = name === 'memory' ? 'none' : '';
   const testConnBtn = document.getElementById('testConnBtn');
@@ -2529,21 +2620,325 @@ document.addEventListener('click', () => { closeModelDropdown(); closeModelPicke
 
 /* ── Memory tab ──────────────────────────────────────────────────────────── */
 async function addMemory() {
-  const text   = document.getElementById('mText').value.trim();
-  const title  = document.getElementById('mTitle').value.trim();
-  const source = document.getElementById('mSource').value.trim();
+  const text   = document.getElementById('mText')?.value.trim();
+  const title  = document.getElementById('mTitle')?.value.trim();
+  const source = document.getElementById('mSource')?.value.trim();
   const al = document.getElementById('memAlert');
-  if (!text) { al.innerHTML = '<div class="alert alert-err">请输入内容</div>'; return; }
+  if (!text) { if (al) al.innerHTML = '<div class="alert alert-err">请输入内容</div>'; return; }
   const res = await api().add_to_memory(text, title, source);
   if (res.ok) {
-    al.innerHTML = '<div class="alert alert-ok">✓ 已添加到知识库</div>';
-    document.getElementById('mText').value  = '';
-    document.getElementById('mTitle').value = '';
-    document.getElementById('mSource').value = '';
+    if (al) al.innerHTML = '<div class="alert alert-ok">✓ 已添加到知识库</div>';
   } else {
-    al.innerHTML = `<div class="alert alert-err">✗ ${esc(res.error)}</div>`;
+    if (al) al.innerHTML = `<div class="alert alert-err">✗ ${esc(res.error)}</div>`;
   }
-  setTimeout(() => al.innerHTML = '', 4000);
+  setTimeout(() => { if (al) al.innerHTML = ''; }, 4000);
+}
+
+/* ── 知识库管理 ───────────────────────────────────────────────────────────── */
+let _kbTargetName = null;   // null=新建  string=追加到已有集合
+let _kbEmbedModel  = 'BAAI/bge-small-zh-v1.5';
+let _kbFiles       = [];    // [{path, status:'pending'|'loading'|'done'|'error', chunks, addedAt, error}]
+
+function kbShowAddForm(colName, evt) {
+  if (evt) evt.stopPropagation();
+  _kbTargetName = colName;
+  _kbFiles = [];
+  kbRenderFileList();
+  document.getElementById('kbAlert').innerHTML = '';
+  document.getElementById('kbUrl').value = '';
+  const title = document.getElementById('kbAddFormTitle');
+  if (colName) {
+    title.textContent = `导入文档到"${colName}"`;
+    document.getElementById('kbStep1').hidden = true;
+    document.getElementById('kbStep2').hidden = false;
+  } else {
+    title.textContent = '新建知识库';
+    document.getElementById('kbAddName').value = '';
+    document.getElementById('kbEmbedModel').value = 'BAAI/bge-small-zh-v1.5';
+    document.getElementById('kbStep1Alert').innerHTML = '';
+    document.getElementById('kbStep1').hidden = false;
+    document.getElementById('kbStep2').hidden = true;
+  }
+  const form = document.getElementById('kbAddForm');
+  form.hidden = false;
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function kbNextStep() {
+  const name    = document.getElementById('kbAddName').value.trim();
+  const alertEl = document.getElementById('kbStep1Alert');
+  if (!name) {
+    alertEl.innerHTML = `<span style="color:var(--danger)">请填写知识库名称</span>`;
+    return;
+  }
+  alertEl.innerHTML = '';
+  _kbEmbedModel = document.getElementById('kbEmbedModel').value;
+  document.getElementById('kbAddFormTitle').textContent = `导入文档到"${name}"`;
+  document.getElementById('kbStep1').hidden = true;
+  document.getElementById('kbStep2').hidden = false;
+}
+
+function kbHideAddForm() {
+  document.getElementById('kbAddForm').hidden = true;
+  _kbTargetName = null;
+  _kbFiles = [];
+}
+
+/* 拖拽区事件 */
+function kbDragOver(e) {
+  e.preventDefault();
+  document.getElementById('kbDropZone').classList.add('drag-over');
+}
+function kbDragLeave(e) {
+  document.getElementById('kbDropZone').classList.remove('drag-over');
+}
+function kbDrop(e) {
+  e.preventDefault();
+  document.getElementById('kbDropZone').classList.remove('drag-over');
+  const files   = Array.from(e.dataTransfer.files || []);
+  const allowed = ['.txt', '.md', '.pdf', '.docx'];
+  files.forEach(f => {
+    const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+    if (allowed.includes(ext) && f.path && !_kbFiles.some(x => x.path === f.path)) {
+      _kbFiles.push({ path: f.path, status: 'pending', chunks: 0, addedAt: '', error: '' });
+    }
+  });
+  kbRenderFileList();
+  _kbAutoFillName();
+}
+
+/* 点击区域 → 打开文件对话框 */
+async function kbClickDrop() {
+  const paths = await api().open_file_dialog();
+  if (!paths || paths.length === 0) return;
+  paths.forEach(p => {
+    if (p && !_kbFiles.some(x => x.path === p))
+      _kbFiles.push({ path: p, status: 'pending', chunks: 0, addedAt: '', error: '' });
+  });
+  kbRenderFileList();
+  _kbAutoFillName();
+}
+
+function _kbAutoFillName() {
+  if (_kbTargetName) return;
+  const nameEl = document.getElementById('kbAddName');
+  if (nameEl && !nameEl.value.trim() && _kbFiles.length) {
+    const base = _kbFiles[0].path.split(/[/\\]/).pop() || '';
+    nameEl.value = base.replace(/\.[^.]+$/, '');
+  }
+}
+
+function kbRenderFileList() {
+  const el = document.getElementById('kbFileList');
+  if (!el) return;
+  if (_kbFiles.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = _kbFiles.map((f, i) => {
+    const name      = f.path.split(/[/\\]/).pop() || f.path;
+    const isDone    = f.status === 'done';
+    const isLoading = f.status === 'loading';
+    const isError   = f.status === 'error';
+    const icon      = isDone    ? `<span style="color:var(--green,#2da44e)">&#10003;</span>`
+                    : isError   ? `<span style="color:var(--danger)">&#9888;</span>`
+                    : '&#128196;';
+    const delBtn    = f.status === 'pending'
+      ? `<button class="kb-file-row-del" onclick="kbRemoveFile(${i})" title="移除">&times;</button>` : '';
+    let below = '';
+    if (isLoading) {
+      below = `<div class="kb-file-bar"><div class="kb-file-bar-fill loading"></div></div>`;
+    } else if (isDone) {
+      below = `<div class="kb-file-bar"><div class="kb-file-bar-fill done"></div></div>
+               <div class="kb-file-meta">${esc(f.addedAt)} &middot; ${f.chunks} 块</div>`;
+    } else if (isError) {
+      below = `<div class="kb-file-err">&#10007; ${esc(f.error)}</div>`;
+    }
+    return `<div class="kb-file-row">
+      <div class="kb-file-row-top">
+        <span style="font-size:13px;flex-shrink:0">${icon}</span>
+        <span class="kb-file-row-name" title="${esc(f.path)}">${esc(name)}</span>
+        ${delBtn}
+      </div>${below}
+    </div>`;
+  }).join('');
+}
+
+function kbRemoveFile(idx) {
+  _kbFiles.splice(idx, 1);
+  kbRenderFileList();
+}
+
+async function kbIngest() {
+  const al   = document.getElementById('kbAlert');
+  const btn  = document.getElementById('kbIngestBtn');
+  const name = _kbTargetName || document.getElementById('kbAddName').value.trim();
+  const url  = document.getElementById('kbUrl').value.trim();
+  const embedModel = _kbTargetName ? '' : _kbEmbedModel;
+  if (!name && !url) { al.innerHTML = `<span style="color:var(--danger)">请填写知识库名称</span>`; return; }
+  if (!_kbFiles.length && !url) { al.innerHTML = `<span style="color:var(--danger)">请选择文件或填写 URL</span>`; return; }
+  let allOk = true, totalChunks = 0, kbName = name;
+  try {
+    btn.disabled = true;
+    al.innerHTML = '';
+    for (let i = 0; i < _kbFiles.length; i++) {
+      if (_kbFiles[i].status !== 'pending') continue;
+      _kbFiles[i].status = 'loading';
+      kbRenderFileList();
+      const res = await api().kb_ingest_file(_kbFiles[i].path, name, embedModel);
+      if (res.ok) {
+        _kbFiles[i].status  = 'done';
+        _kbFiles[i].chunks  = res.chunks || 0;
+        _kbFiles[i].addedAt = res.added_at || new Date().toLocaleDateString('zh-CN');
+        totalChunks += _kbFiles[i].chunks;
+        kbName = res.name;
+      } else {
+        _kbFiles[i].status = 'error';
+        _kbFiles[i].error  = res.error || '导入失败';
+        allOk = false;
+      }
+      kbRenderFileList();
+    }
+    // URL 导入
+    if (url) {
+      al.innerHTML = '&#9203; 正在导入 URL…';
+      const res = await api().kb_ingest_url(url, name || url, embedModel);
+      if (res.ok) { totalChunks += (res.chunks || 0); kbName = res.name; }
+      else { allOk = false; al.innerHTML = `<span style="color:var(--danger)">✗ ${esc(res.error)}</span>`; }
+    }
+    if (allOk) {
+      al.innerHTML = totalChunks > 0
+        ? `<span style="color:var(--green,#2da44e)">✓ 全部导入完成，共 ${totalChunks} 块</span>`
+        : `<span style="color:var(--green,#2da44e)">✓ 导入完成</span>`;
+      if (url) document.getElementById('kbUrl').value = '';
+      await kbLoadList();
+      if (kbName) {
+        const sid  = kbSafeId(kbName);
+        const body = document.getElementById('kbBody_' + sid);
+        const hd   = document.querySelector(`#kbCard_${sid} .kb-card-hd`);
+        if (body && body.hidden) { body.hidden = false; if (hd) hd.classList.add('open'); }
+        if (body) await kbLoadSources(kbName, sid);
+      }
+    }
+  } catch(e) {
+    al.innerHTML = `<span style="color:var(--danger)">✗ ${esc(String(e))}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function kbSafeId(name) {
+  return name.replace(/[^a-zA-Z0-9]/g, '_');
+}
+
+async function kbToggleCard(safeId, name, hdEl) {
+  const body = document.getElementById('kbBody_' + safeId);
+  if (!body) return;
+  const isOpen = !body.hidden;
+  body.hidden = isOpen;
+  if (hdEl) hdEl.classList.toggle('open', !isOpen);
+  if (!isOpen) await kbLoadSources(name, safeId);
+}
+
+async function kbLoadSources(name, safeId) {
+  const body = document.getElementById('kbBody_' + safeId);
+  if (!body) return;
+  body.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0">加载中…</div>';
+  try {
+    const srcs = await api().kb_list_sources(name);
+    let html = '';
+    if (!srcs || srcs.length === 0) {
+      html = '<div style="color:var(--muted);font-size:12px;padding:8px 0">暂无文件记录</div>';
+    } else {
+      html = srcs.map(s => {
+        const icon     = s.source && s.source.startsWith('http') ? '🌐' : '📄';
+        const dispName = esc(s.name || s.source);
+        const meta     = [s.added_at, s.count + ' 块'].filter(Boolean).join(' · ');
+        const srcJson  = JSON.stringify(s.source);
+        const nameJson = JSON.stringify(name);
+        return `<div class="kb-src-row">
+          <span class="kb-src-icon">${icon}</span>
+          <div class="kb-src-info">
+            <div class="kb-src-name" title="${esc(s.source)}">${dispName}</div>
+            <div class="kb-src-meta">${meta}</div>
+          </div>
+          <button class="kb-src-del" title="删除此来源的所有块"
+            onclick="kbDeleteSrc(${nameJson},${srcJson},event)">🗑</button>
+        </div>`;
+      }).join('');
+    }
+    const nameJson = JSON.stringify(name);
+    html += `<div class="kb-card-footer">
+      <button class="kb-more-btn" onclick="kbShowAddForm(${nameJson},event)">＋ 导入更多文档</button>
+    </div>`;
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:8px 0">${esc(String(e))}</div>`;
+  }
+}
+
+async function kbDeleteSrc(colName, source, evt) {
+  if (evt) evt.stopPropagation();
+  const display = String(source).split(/[/\\]/).pop() || source;
+  if (!confirm(`确认删除"${display}"的所有文本块？`)) return;
+  const res = await api().kb_delete_source(colName, source);
+  if (res && res.ok !== false) {
+    await kbLoadList();
+    const sid  = kbSafeId(colName);
+    const body = document.getElementById('kbBody_' + sid);
+    if (body && !body.hidden) await kbLoadSources(colName, sid);
+  }
+}
+
+async function kbDeleteCol(name, evt) {
+  if (evt) evt.stopPropagation();
+  if (!confirm(`确认删除知识库"${name}"？此操作不可撤销。`)) return;
+  const res = await api().kb_delete(name);
+  if (res.ok) kbLoadList();
+}
+
+async function kbLoadList() {
+  const el    = document.getElementById('kbColList');
+  const empty = document.getElementById('kbEmpty');
+  if (!el) return;
+  try {
+    const cols = await api().kb_list();
+    if (!cols || cols.length === 0) {
+      el.innerHTML = '';
+      if (empty) empty.hidden = false;
+      return;
+    }
+    if (empty) empty.hidden = true;
+    // 记住当前展开的卡片
+    const openSids = new Set(
+      [...document.querySelectorAll('.kb-card-hd.open')].map(h => h.dataset.sid)
+    );
+    el.innerHTML = cols.map(c => {
+      const sid      = kbSafeId(c.display_name);
+      const safeName = esc(c.display_name);
+      const nameJson = JSON.stringify(c.display_name);
+      const isOpen   = openSids.has(sid);
+      return `<div class="kb-card" id="kbCard_${sid}">
+        <div class="kb-card-hd ${isOpen ? 'open' : ''}" data-sid="${sid}"
+             onclick="kbToggleCard('${sid}',${nameJson},this)">
+          <span class="kb-chevron">▶</span>
+          <span class="kb-card-name" title="${safeName}">${safeName}</span>
+          <span class="kb-card-badge">${c.count} 块</span>
+          <div class="kb-card-acts" onclick="event.stopPropagation()">
+            <button class="btn-secondary" style="font-size:11px;padding:2px 8px"
+              onclick="kbShowAddForm(${nameJson},event)">↑ 导入</button>
+            <button class="btn-danger" style="font-size:11px;padding:2px 8px"
+              onclick="kbDeleteCol(${nameJson},event)">删除</button>
+          </div>
+        </div>
+        <div class="kb-card-body" id="kbBody_${sid}" ${isOpen ? '' : 'hidden'}></div>
+      </div>`;
+    }).join('');
+    // 重新渲染已展开的卡片内容
+    for (const sid of openSids) {
+      const info = cols.find(c => kbSafeId(c.display_name) === sid);
+      if (info) await kbLoadSources(info.display_name, sid);
+    }
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:10px 0">${esc(String(e))}</div>`;
+  }
 }
 
 /* ── Textarea auto-resize + keyboard shortcut ─────────────────────────────── */

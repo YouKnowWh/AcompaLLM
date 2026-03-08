@@ -60,7 +60,7 @@ PUBLIC_BASE_URL = "http://127.0.0.1:8000"
 _GATEWAY_MODEL_NAME_DEFAULT = "ai-memory"
 
 
-app = FastAPI(title="AI Memory Gateway", version="0.2.0")
+app = FastAPI(title="AcompaLLM Gateway", version="0.2.0")
 
 app.add_middleware(
 	CORSMiddleware,

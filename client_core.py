@@ -1,4 +1,4 @@
-"""AI Memory Desktop Client — Core Logic
+"""AcompaLLM Desktop Client — Core Logic
 
 处理配置、对话存储和上游 API 通信。
 将网关逻辑（工具调用、搜索、RAG）直接内嵌，无需独立服务器。
@@ -32,6 +32,11 @@ try:
     from rag_adapter import add_document as _add_document  # type: ignore
 except Exception:
     _add_document = None
+
+try:
+    from kb import agentic_search as _agentic_search  # type: ignore
+except Exception:
+    _agentic_search = None
 
 # ─── 存储路径 ─────────────────────────────────────────────────────────────────
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -352,6 +357,33 @@ class UpstreamClient:
             pass
         return fallback
 
+    def simple_chat(
+        self,
+        messages: List[Dict],
+        model: str = "",
+        temperature: float = 0.0,
+    ) -> str:
+        """同步非流式 LLM 调用，返回助手回复文本。用于 Agentic RAG 查询改写/反思。"""
+        _model = model or self.config.model
+        payload = {
+            "model":       _model,
+            "messages":    messages,
+            "temperature": temperature,
+            "stream":      False,
+        }
+        try:
+            with httpx.Client(timeout=30.0) as c:
+                resp = c.post(
+                    f"{self.config.base_url}/v1/chat/completions",
+                    headers=self._headers(),
+                    json=payload,
+                )
+            resp.raise_for_status()
+            data = resp.json()
+            return (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+        except Exception:
+            return ""
+
     def stream_chat(
         self,
         messages: List[Dict],
@@ -519,6 +551,62 @@ class ClientCore:
         except Exception:
             return False
 
+    # ── 知识库管理 ────────────────────────────────────────────────────────────
+    def list_kb_collections(self) -> List[Dict]:
+        try:
+            import kb
+            return kb.list_collections()
+        except Exception:
+            return []
+
+    def kb_ingest_file(self, path: str, name: str = "", embed_model: str = "") -> Dict:
+        try:
+            import kb
+            result = kb.ingest_file(path, name=name or None, embed_model=embed_model or None)
+            return {"ok": True, **result}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def kb_ingest_folder(self, folder: str, name: str = "", embed_model: str = "") -> Dict:
+        try:
+            import kb
+            results = kb.ingest_folder(folder, name=name or None, embed_model=embed_model or None)
+            total_chunks = sum(r.get("chunks", 0) for r in results)
+            first_name = results[0]["name"] if results else (name or folder)
+            return {"ok": True, "chunks": total_chunks, "files": len(results), "name": first_name}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def kb_ingest_url(self, url: str, name: str, embed_model: str = "") -> Dict:
+        try:
+            import kb
+            result = kb.ingest_url(url, name, embed_model=embed_model or None)
+            return {"ok": True, **result}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def kb_delete(self, name: str) -> bool:
+        try:
+            import kb
+            return kb.delete_collection(name)
+        except Exception:
+            return False
+
+    def kb_list_sources(self, collection_name: str) -> List[Dict]:
+        try:
+            import kb
+            return kb.list_sources(collection_name)
+        except Exception:
+            return []
+
+    def kb_delete_source(self, collection_name: str, source: str) -> Dict:
+        try:
+            import kb
+            deleted = kb.delete_source(collection_name, source)
+            return {"ok": True, "deleted": deleted}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     # ── 流式消息发送 ──────────────────────────────────────────────────────────
     def stream_message(
         self,
@@ -620,10 +708,24 @@ class ClientCore:
             else:
                 yield {"type": "tool_error", "tool": "web_search", "error": "搜索插件未安装，请运行: pip install ddgs"}
 
-        if use_rag and _retrieve_context is not None:
+        # ── [Level 3 预留槽位] 记忆库独立检索 ─────────────────────────────────
+        # memory_hits = _memory_search(user_text)  # 记忆库系统（待实现）
+
+        if use_rag:
             yield {"type": "tool_start", "tool": "rag", "query": user_text[:100]}
             try:
-                hits = list(_retrieve_context(user_text, top_k=3))
+                t0 = time.time()
+                if _agentic_search is not None:
+                    # Agentic RAG Level 2：查询改写 → 检索 → 反思迭代
+                    def _llm_call(msgs: List[Dict]) -> str:
+                        return self._upstream.simple_chat(msgs, model=model, temperature=0.0)
+                    hits = list(_agentic_search(user_text, _llm_call, top_k=5))
+                elif _retrieve_context is not None:
+                    # 降级：普通向量检索
+                    hits = list(_retrieve_context(user_text, top_k=3))
+                else:
+                    hits = []
+                elapsed = round((time.time() - t0) * 1000)
                 if hits:
                     rag_lines = [
                         f"- {h.get('title') or h.get('source') or '片段'}: "
@@ -632,7 +734,7 @@ class ClientCore:
                     ]
                     context_parts.append("[知识库相关内容]\n" + "\n".join(rag_lines))
                 yield {"type": "tool_done", "tool": "rag",
-                       "query": user_text[:100], "results": hits if hits else None, "elapsed": 0}
+                       "query": user_text[:100], "results": hits if hits else None, "elapsed": elapsed}
             except Exception as exc:
                 yield {"type": "tool_error", "tool": "rag", "error": str(exc)}
 

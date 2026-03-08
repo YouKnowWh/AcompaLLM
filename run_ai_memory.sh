@@ -22,7 +22,7 @@ if [[ "$OPEN_BROWSER" == "1" ]] && command -v xdg-open >/dev/null 2>&1; then
   ) &
 fi
 
-echo "AI Memory 正在启动..."
+echo "AcompaLLM 正在启动..."
 echo "访问地址: $URL"
 echo "停止服务: Ctrl+C"
 

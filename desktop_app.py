@@ -1,5 +1,5 @@
 """
-desktop_app.py — AI Memory 桌面客户端入口
+desktop_app.py — AcompaLLM 桌面客户端入口
 
 架构：
   - pywebview 创建原生系统窗口（类 Electron）
@@ -218,6 +218,44 @@ class AppApi:
         ok = self._core.add_to_memory(text, title, source)
         return {"ok": ok, "error": "" if ok else "RAG 适配器未安装，请先安装 rag_adapter"}
 
+    # ── 知识库管理 ──────────────────────────────────────────────────────────
+
+    def kb_list(self) -> List[Dict]:
+        return self._core.list_kb_collections()
+
+    def kb_ingest_file(self, path: str, name: str = "", embed_model: str = "") -> Dict:
+        return self._core.kb_ingest_file(path, name, embed_model)
+
+    def kb_ingest_folder(self, folder: str, name: str = "", embed_model: str = "") -> Dict:
+        return self._core.kb_ingest_folder(folder, name, embed_model)
+
+    def kb_ingest_url(self, url: str, name: str, embed_model: str = "") -> Dict:
+        return self._core.kb_ingest_url(url, name, embed_model)
+
+    def kb_delete(self, name: str) -> Dict:
+        ok = self._core.kb_delete(name)
+        return {"ok": ok}
+
+    def kb_list_sources(self, collection_name: str) -> List[Dict]:
+        return self._core.kb_list_sources(collection_name)
+
+    def kb_delete_source(self, collection_name: str, source: str) -> Dict:
+        return self._core.kb_delete_source(collection_name, source)
+
+    def open_file_dialog(self) -> str:
+        result = webview.windows[0].create_file_dialog(
+            webview.FileDialog.OPEN,
+            allow_multiple=True,
+            file_types=("Documents (*.txt;*.md;*.pdf;*.docx)", "All Files (*.*)"),
+        )
+        if not result:
+            return []
+        return list(result)
+
+    def open_folder_dialog(self) -> str:
+        result = webview.windows[0].create_file_dialog(webview.FileDialog.FOLDER)
+        return result[0] if result else ""
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -235,7 +273,7 @@ def _setup_ime() -> None:
     if sys.platform != "win32":
         os.environ["GTK_IM_MODULE"] = "none"
         os.environ["XMODIFIERS"]    = ""
-    print("[AI Memory] IME: JS 内置拼音  切换快捷键: Ctrl+Space")
+    print("[AcompaLLM] IME: JS 内置拼音  切换快捷键: Ctrl+Space")
 
 
 def main() -> None:
@@ -268,15 +306,15 @@ def main() -> None:
 
     port = _find_free_port(9127)
     _start_file_server(CLIENT_DIR, port)
-    print(f"[AI Memory] 本地文件服务已启动: http://127.0.0.1:{port}/")
+    print(f"[AcompaLLM] 本地文件服务已启动: http://127.0.0.1:{port}/")
 
     scale = 1.0
-    print(f"[AI Memory] 系统缩放比例: {scale}")
+    print(f"[AcompaLLM] 系统缩放比例: {scale}")
 
     api = AppApi()
 
     window = webview.create_window(
-        title="AI Memory",
+        title="AcompaLLM",
         url=f"http://127.0.0.1:{port}/?scale={scale}",
         js_api=api,
         width=1280,

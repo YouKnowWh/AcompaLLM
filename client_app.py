@@ -1,4 +1,4 @@
-"""AI Memory Desktop Client — 应用入口
+"""AcompaLLM Desktop Client — 应用入口
 
 启动方式：
     python client_app.py
@@ -107,7 +107,7 @@ def main() -> None:
     )
 
     window = webview.create_window(
-        title            = "AI Memory",
+        title            = "AcompaLLM",
         url              = f"file://{ui_path}",
         js_api           = api,
         width            = 1280,

@@ -1,4 +1,4 @@
-# AI Memory
+# AcompaLLM
 
 个人 AI 对话桌面客户端，内置联网搜索与向量记忆库。
 
@@ -45,4 +45,3 @@ python desktop_app.py
 - pywebview ≥ 4.0（EdgeChromium 后端）
 - httpx、sentence-transformers、faiss-cpu
 - duckduckgo-search（联网搜索）
-- pypinyin + jieba（内置中文输入法引擎）
