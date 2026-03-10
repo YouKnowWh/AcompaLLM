@@ -14,9 +14,9 @@ import re
 from typing import List
 
 # 可配置参数
-CHUNK_SIZE: int = 500   # 目标块大小（字符数）
-OVERLAP: int = 60       # 相邻块重叠字符数
-MIN_CHUNK: int = 50     # 低于此长度的块丢弃（避免碎片）
+CHUNK_SIZE: int = 4000  # 目标块大小（字符数）
+OVERLAP: int = 200      # 相邻块重叠字符数
+MIN_CHUNK: int = 100    # 低于此长度的块丢弃（避免碎片）
 
 # 句子级分割标点（中英文均覆盖）
 _SENT_END = re.compile(r'(?<=[。！？；…\.\!\?;])\s*')
@@ -84,10 +84,7 @@ def chunk_text(text: str) -> List[str]:
                 overlap_prefix = buf[-OVERLAP:] if len(buf) > OVERLAP else buf
                 buf = overlap_prefix + sent
 
-        # 段落结束后强制切块（段落边界更干净）
-        if len(buf) >= MIN_CHUNK:
-            chunks.append(buf)
-            buf = ""
+        # 段落间不强制切块，让内容跨段自然积累至 CHUNK_SIZE
 
     # 处理残留
     if len(buf) >= MIN_CHUNK:

@@ -56,6 +56,6 @@
   "C_Cpp_Runner.showCompilationTime": false,
   "C_Cpp_Runner.useLinkTimeOptimization": false,
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
-  "python.defaultInterpreterPath": "/home/alex/AI_Memory/.venv/bin/python",
+  "python.defaultInterpreterPath": "e:/Documents/AcompaLLM/.venv/Scripts/python.exe",
   "python.terminal.activateEnvironment": true
 }

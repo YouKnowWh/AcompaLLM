@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import re
 import time
 import uuid
@@ -111,6 +112,13 @@ def _needs_deep_think(text: str) -> bool:
 
 # 具有原生思考模式 API 的厂商（无需 system prompt 注入）
 _NATIVE_THINK_PROVIDERS = {"deepseek", "openai", "qwen", "gemini"}
+
+# ─── 工具循环消息轮次上限 ─────────────────────────────────────────────────────
+# 计数单位：消息来回次数（一轮 = 模型发一条消息，不论该消息包含几个工具调用）
+# 有 KB 绑定时（无论是否同时联网）使用 MAX_KB_TOOL_ITERS
+# 纯联网无 KB 时使用 MAX_WEB_TOOL_ITERS
+MAX_KB_TOOL_ITERS  = 5
+MAX_WEB_TOOL_ITERS = 3
 
 
 def _apply_deep_think(provider: str, model: str, payload: Dict) -> tuple:
@@ -314,6 +322,9 @@ class ConversationStore:
             conv["system_prompt"] = v if v is not None else ""
         if "temperature" in updates:
             conv["temperature"] = updates["temperature"]  # None → use global
+        if "kb_names" in updates:
+            v = updates["kb_names"]
+            conv["kb_names"] = list(v) if isinstance(v, list) else []
         return self.save(conv)
 
 
@@ -383,6 +394,52 @@ class UpstreamClient:
             return (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
         except Exception:
             return ""
+
+    def tool_chat(
+        self,
+        messages: List[Dict],
+        tools: List[Dict],
+        model: str = "",
+        temperature: float = 0.0,
+        parallel_tool_calls: bool = False,
+    ) -> Dict:
+        """
+        非流式工具调用。返回三种结果之一：
+          {"tool_calls": [...]}  — 模型要调用工具（继续循环）
+          {"content": "..."}     — 模型主动停止调用（循环结束信号）
+          {"error": "..."}       — 请求失败（4xx / 解析异常 / 网络错误）
+        """
+        _model = model or self.config.model
+        payload: Dict[str, Any] = {
+            "model":               _model,
+            "messages":            messages,
+            "temperature":         temperature,
+            "stream":              False,
+            "tools":               tools,
+            "parallel_tool_calls": parallel_tool_calls,
+        }
+        try:
+            with httpx.Client(timeout=30.0) as c:
+                resp = c.post(
+                    f"{self.config.base_url}/v1/chat/completions",
+                    headers=self._headers(),
+                    json=payload,
+                )
+            if resp.status_code >= 400:
+                try:
+                    msg = resp.json().get("error", {}).get("message", resp.text[:300])
+                except Exception:
+                    msg = resp.text[:300]
+                return {"error": msg}
+            data    = resp.json()
+            choice  = (data.get("choices") or [{}])[0]
+            message = choice.get("message", {})
+            tc = message.get("tool_calls")
+            if tc:
+                return {"tool_calls": tc}
+            return {"content": message.get("content") or ""}
+        except Exception as e:
+            return {"error": str(e)}
 
     def stream_chat(
         self,
@@ -527,6 +584,10 @@ class ClientCore:
     def update_conversation(self, conv_id: str, updates: Dict) -> bool:
         return self.store.update(conv_id, updates)
 
+    def conv_set_kb_names(self, conv_id: str, kb_names: List[str]) -> bool:
+        """设置对话绑定的知识库列表，持久化到对话 JSON 的 kb_names 字段。"""
+        return self.store.update(conv_id, {"kb_names": kb_names})
+
     def clear_conversation(self, conv_id: str) -> bool:
         conv = self.store.get(conv_id)
         if not conv:
@@ -559,10 +620,10 @@ class ClientCore:
         except Exception:
             return []
 
-    def kb_ingest_file(self, path: str, name: str = "", embed_model: str = "") -> Dict:
+    def kb_ingest_file(self, path: str, name: str = "", embed_model: str = "", on_progress=None, source_name: str = None) -> Dict:
         try:
             import kb
-            result = kb.ingest_file(path, name=name or None, embed_model=embed_model or None)
+            result = kb.ingest_file(path, name=name or None, embed_model=embed_model or None, on_progress=on_progress, source_name=source_name or None)
             return {"ok": True, **result}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -599,6 +660,13 @@ class ClientCore:
         except Exception:
             return []
 
+    def kb_peek_chunks(self, collection_name: str, source: str, limit: int = 100) -> List[Dict]:
+        try:
+            import kb
+            return kb.peek_chunks(collection_name, source, limit)
+        except Exception:
+            return []
+
     def kb_delete_source(self, collection_name: str, source: str) -> Dict:
         try:
             import kb
@@ -617,15 +685,17 @@ class ClientCore:
     ) -> Generator:
         """
         生成器，yield 流事件 dict，供 desktop_app.py 的后台线程消费：
-          {type: "start",      message_id, user_message_id, model}
-          {type: "tool_start", tool, query}
-          {type: "tool_done",  tool, query, results, elapsed}
-          {type: "tool_error", tool, error}
-          {type: "reasoning_chunk", text}
-          {type: "content_chunk",   text}
-          {type: "done",       usage, message_id, model}
-          {type: "error",      message}
-          {type: "title_update", conv_id, title}
+          {type: "start",          message_id, user_message_id, model}
+          {type: "tool_start",     tool, query}
+          {type: "tool_done",      tool, query, results, elapsed}
+          {type: "tool_error",     tool, error}
+          {type: "kb_tool_done",   kb_name, query, hit_count, chunks}
+          {type: "fallback_notice",message}          — 工具调用失败退化时
+          {type: "reasoning_chunk",text}
+          {type: "content_chunk",  text}
+          {type: "done",           usage, message_id, model}
+          {type: "error",          message}
+          {type: "title_update",   conv_id, title}
         """
         conv = self.store.get(conv_id)
         if not conv:
@@ -642,10 +712,14 @@ class ClientCore:
         _c_temp = conv.get("temperature")  # None 表示未单独设置
         temperature   = float(options.get("temperature") or (_c_temp if _c_temp is not None else self.config.temperature))
         web_search_mode = options.get("tool_web_search") or self.config.get().get("tool_web_search", "auto")
-        use_rag       = options.get("tool_rag") or self.config.get().get("tool_rag", False)
+        # kb_names 先取 options（前端本次传入），再取对话持久化值
+        kb_names: List[str] = options.get("kb_names") or conv.get("kb_names") or []
+        # 重新生成时设为 True，跳过保存用户消息（用户消息已存在于 conv JSON）
+        skip_user_save = bool(options.get("skip_user_save"))
 
         # ── 生成 ID（提前，确保 start 事件可立即发出）─────────────────────────
-        user_msg_id = "msg_" + uuid.uuid4().hex[:10]
+        # 重新生成时复用原用户消息 ID，确保前端 start 事件携带正确 user_message_id
+        user_msg_id = str(options.get("existing_user_msg_id") or "") or ("msg_" + uuid.uuid4().hex[:10])
         ai_msg_id   = "msg_" + uuid.uuid4().hex[:10]
 
         # ── 构建消息列表 ──────────────────────────────────────────────────────
@@ -660,7 +734,8 @@ class ClientCore:
                 continue
             history.append({"role": m["role"], "content": m.get("content") or ""})
 
-        history.append({"role": "user", "content": user_text})
+        if not skip_user_save:
+            history.append({"role": "user", "content": user_text})
 
         # ── 立即发出 start，让前端建立消息气泡（工具块将插入其中）────────────
         yield {"type": "start", "message_id": ai_msg_id, "user_message_id": user_msg_id, "model": model}
@@ -680,6 +755,7 @@ class ClientCore:
         _engine_key_map = {"tavily": tavily_key, "bing": bing_key, "brave": brave_key, "serp": serp_key}
         engine_api_key  = _engine_key_map.get(web_engine, "")
 
+        _tool_snapshots: list = []  # 收集工具调用结果，随 ai_entry 持久化
         should_search = (
             web_search_mode == "true"
             or (web_search_mode == "auto" and _needs_search(user_text))
@@ -698,6 +774,13 @@ class ClientCore:
                     })
                     elapsed = round((time.time() - t0) * 1000)
                     results = raw if isinstance(raw, list) else None
+                    if results:
+                        _tool_snapshots.append({
+                            "tool":    "web_search",
+                            "query":   search_query,
+                            "results": [{"title": r.get("title", ""), "url": r.get("url", "")}
+                                        for r in results[:8]],
+                        })
                     yield {"type": "tool_done", "tool": "web_search",
                            "query": search_query, "results": results, "elapsed": elapsed}
                     context_parts.append(
@@ -707,36 +790,118 @@ class ClientCore:
                     yield {"type": "tool_error", "tool": "web_search", "error": str(exc)}
             else:
                 yield {"type": "tool_error", "tool": "web_search", "error": "搜索插件未安装，请运行: pip install ddgs"}
-
+        # 搜索工具完成后立即检查取消标志
+        if stop_flag.is_set():
+            return
         # ── [Level 3 预留槽位] 记忆库独立检索 ─────────────────────────────────
         # memory_hits = _memory_search(user_text)  # 记忆库系统（待实现）
 
-        if use_rag:
-            yield {"type": "tool_start", "tool": "rag", "query": user_text[:100]}
+        # ── KB Level 3 检索（只要对话绑定了 kb_names 就启动）────────────────
+        if kb_names:
+            yield {"type": "tool_start", "tool": "kb_search", "query": user_text[:100]}
             try:
+                import kb as _kb_module
+
+                _tool_errors: List[str] = []
+                _ev_q: "queue.SimpleQueue[Optional[Dict]]" = queue.SimpleQueue()
+                _result: Dict[str, Any] = {}
+
+                class _KbCancelled(Exception):
+                    pass
+
+                def _tool_chat_fn(msgs: List[Dict], tools: List[Dict]) -> Dict:
+                    if stop_flag.is_set():
+                        raise _KbCancelled()
+                    res = self._upstream.tool_chat(msgs, tools, model=model, temperature=0.0)
+                    if "error" in res:
+                        _tool_errors.append(res["error"])
+                    return res
+
+                def _search_worker() -> None:
+                    try:
+                        hits, _ = _kb_module.level3_search(
+                            user_text,
+                            _tool_chat_fn,
+                            kb_names=kb_names,
+                            top_k=5,
+                            max_iters=MAX_KB_TOOL_ITERS,
+                            char_budget=32000,
+                            on_round=lambda ev: _ev_q.put(ev),  # 实时回传每轮事件
+                        )
+                        _result["hits"] = hits
+                    except _KbCancelled:
+                        _result["cancelled"] = True
+                    except Exception as exc:
+                        _result["error"] = str(exc)
+                    finally:
+                        _ev_q.put(None)  # 哨兵——通知工作线程已结束
+
                 t0 = time.time()
-                if _agentic_search is not None:
-                    # Agentic RAG Level 2：查询改写 → 检索 → 反思迭代
-                    def _llm_call(msgs: List[Dict]) -> str:
-                        return self._upstream.simple_chat(msgs, model=model, temperature=0.0)
-                    hits = list(_agentic_search(user_text, _llm_call, top_k=5))
-                elif _retrieve_context is not None:
-                    # 降级：普通向量检索
-                    hits = list(_retrieve_context(user_text, top_k=3))
-                else:
-                    hits = []
+                _worker = threading.Thread(target=_search_worker, daemon=True, name="kb-search")
+                _worker.start()
+
+                # 实时将每轮事件 yield 给前端，阻塞各轮之间的空闲期
+                _kb_round_events: list = []
+                for _ev in iter(_ev_q.get, None):
+                    _kb_round_events.append(_ev)
+                    yield {"type": "kb_tool_done", **_ev}
+
+                _worker.join()
                 elapsed = round((time.time() - t0) * 1000)
-                if hits:
-                    rag_lines = [
-                        f"- {h.get('title') or h.get('source') or '片段'}: "
-                        f"{h.get('body') or h.get('text') or str(h)}"
-                        for h in hits
-                    ]
-                    context_parts.append("[知识库相关内容]\n" + "\n".join(rag_lines))
-                yield {"type": "tool_done", "tool": "rag",
-                       "query": user_text[:100], "results": hits if hits else None, "elapsed": elapsed}
+
+                if _result.get("cancelled") or stop_flag.is_set():
+                    return
+
+                if "error" in _result:
+                    yield {"type": "tool_error", "tool": "kb_search", "error": _result["error"]}
+                else:
+                    hits = _result.get("hits") or []
+                    if _tool_errors and not hits:
+                        yield {"type": "fallback_notice",
+                               "message": "当前模型不支持知识库检索，已直接回答"}
+                    else:
+                        if hits:
+                            kb_context = _kb_module.format_kb_hits_for_context(hits)
+                            # C1 注入：将检索内容作为虚拟消息对插在真实问题之前
+                            try:
+                                last_user_idx = next(
+                                    i for i in range(len(history) - 1, -1, -1)
+                                    if history[i].get("role") == "user"
+                                )
+                                history = (
+                                    history[:last_user_idx]
+                                    + [
+                                        {"role": "user",      "content": kb_context},
+                                        {"role": "assistant", "content": "好的，我已看到相关检索内容，请继续提问。"},
+                                    ]
+                                    + history[last_user_idx:]
+                                )
+                            except Exception:
+                                history = _inject_context_to_system(history, kb_context)
+
+                        _tool_snapshots.append({
+                            "tool":   "kb_search",
+                            "rounds": [
+                                {"kb_name":   rd.get("kb_name", ""),
+                                 "query":     rd.get("query", ""),
+                                 "hit_count": rd.get("hit_count", 0),
+                                 "hits":      [{"kb_name":     h.get("kb_name", ""),
+                                               "source":      h.get("source", ""),
+                                               "chunk_index": h.get("chunk_index"),
+                                               "body":        (h.get("body") or "")[:200]}
+                                              for h in rd.get("hits", [])]}
+                                for rd in _kb_round_events
+                            ],
+                        })
+                        yield {"type": "tool_done", "tool": "kb_search",
+                               "query": user_text[:100], "results": hits or None, "elapsed": elapsed}
+
             except Exception as exc:
-                yield {"type": "tool_error", "tool": "rag", "error": str(exc)}
+                yield {"type": "tool_error", "tool": "kb_search", "error": str(exc)}
+
+        # KB 工具完成后立即检查取消标志
+        if stop_flag.is_set():
+            return
 
         if context_parts:
             history = _inject_context_to_system(history, "\n\n".join(context_parts))
@@ -751,25 +916,26 @@ class ClientCore:
                 "用户希望你启动深度思考模式，请尽可能进行详细的内心推理和分析再回答。"
             )
 
-        # ── 保存用户消息 ──────────────────────────────────────────────────────
-        now = int(time.time())
-        user_entry: Dict[str, Any] = {
-            "id":         user_msg_id,
-            "role":       "user",
-            "content":    user_text,
-            "created_at": now,
-        }
-        conv["messages"].append(user_entry)
+        # ── 保存用户消息（重新生成时跳过，用户消息已在 conv JSON 中）────────
+        if not skip_user_save:
+            now = int(time.time())
+            user_entry: Dict[str, Any] = {
+                "id":         user_msg_id,
+                "role":       "user",
+                "content":    user_text,
+                "created_at": now,
+            }
+            conv["messages"].append(user_entry)
 
-        if len(conv["messages"]) == 1 and conv.get("title") == "New Chat":
-            title = user_text.strip()[:50]
-            if len(user_text) > 50:
-                title += "…"
-            conv["title"] = title or "New Chat"
-            self.store.save(conv)
-            yield {"type": "title_update", "conv_id": conv_id, "title": conv["title"]}
-        else:
-            self.store.save(conv)
+            if len(conv["messages"]) == 1 and conv.get("title") == "New Chat":
+                title = user_text.strip()[:50]
+                if len(user_text) > 50:
+                    title += "…"
+                conv["title"] = title or "New Chat"
+                self.store.save(conv)
+                yield {"type": "title_update", "conv_id": conv_id, "title": conv["title"]}
+            else:
+                self.store.save(conv)
 
         # ── 流式上游调用 ──────────────────────────────────────────────────────
         full_content   = ""
@@ -803,6 +969,7 @@ class ClientCore:
             "model":             model,
             "usage":             usage,
             "created_at":        int(time.time()),
+            "tool_results":      _tool_snapshots,
         }
         conv["messages"].append(ai_entry)
         self.store.save(conv)

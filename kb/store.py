@@ -62,6 +62,15 @@ def _get_embed_fn(model: str = None):
     return _embed_fns[m]
 
 
+def warmup(model: str = None) -> None:
+    """预热嵌入模型，使首次导入无感延迟。应在后台线程调用。"""
+    try:
+        _get_embed_fn(model)
+        print(f"[KB] 嵌入模型预热完成: {model or _EMBED_MODEL}")
+    except Exception as exc:
+        print(f"[KB] 嵌入模型预热失败: {exc}")
+
+
 # ──────────────────────────────────────────────────────────────
 # 内部工具
 # ──────────────────────────────────────────────────────────────
@@ -98,6 +107,7 @@ def add_chunks(
     source: str = "",
     extra_meta: Optional[Dict[str, Any]] = None,
     embed_model: str = None,
+    on_progress=None,  # Optional[Callable[[int, int], None]]
 ) -> int:
     """
     将文本块列表写入指定知识库集合。
@@ -133,7 +143,10 @@ def add_chunks(
             ids=ids[start: start + batch],
             metadatas=metas[start: start + batch],
         )
-        print(f"[KB] {display_name}: 已写入 {min(start+batch, len(chunks))}/{len(chunks)} 块")
+        done = min(start + batch, len(chunks))
+        print(f"[KB] {display_name}: 已写入 {done}/{len(chunks)} 块")
+        if on_progress:
+            on_progress(done, len(chunks))
 
     return len(chunks)
 
@@ -270,6 +283,34 @@ def list_sources(display_name: str) -> List[Dict[str, Any]]:
         sources[src]["count"] += 1
 
     return list(sources.values())
+
+
+def peek_chunks(display_name: str, source: str, limit: int = 100) -> List[Dict[str, Any]]:
+    """
+    获取指定来源的前 limit 个分块内容（用于预览），按 chunk_index 排序。
+    返回 [{body, chunk_index}] 列表。
+    """
+    client = _get_client()
+    col_name = _col_id(display_name)
+    try:
+        col = client.get_collection(col_name)
+    except Exception:
+        return []
+
+    result = col.get(
+        where={"source": source},
+        include=["documents", "metadatas"],
+    )
+    docs  = result.get("documents") or []
+    metas = result.get("metadatas") or []
+    items = []
+    for doc, meta in zip(docs, metas):
+        items.append({
+            "body": doc,
+            "chunk_index": meta.get("chunk_index", 0),
+        })
+    items.sort(key=lambda x: x["chunk_index"])
+    return items[:limit]
 
 
 def delete_source(display_name: str, source: str) -> int:

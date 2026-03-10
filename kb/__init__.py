@@ -22,6 +22,8 @@ from kb.chunker import chunk_text
 from kb.parser import default_name, parse_file, parse_url
 from kb import store as _store
 from kb.agent import agentic_search as _agentic_search
+from kb.agent import level3_search as _level3_search
+from kb.agent import format_kb_hits_for_context as _format_kb_hits_for_context
 
 # 支持的文件扩展名
 _SUPPORTED_EXT = {".txt", ".md", ".pdf", ".docx"}
@@ -35,6 +37,8 @@ def ingest_file(
     path: Union[str, Path],
     name: Optional[str] = None,
     embed_model: Optional[str] = None,
+    on_progress=None,
+    source_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     解析并导入单个文件到知识库。
@@ -43,6 +47,7 @@ def ingest_file(
         path: 文件路径
         name: 知识库名称；不传则使用文件名去后缀
         embed_model: 嵌入模型名；不传则使用集合已存储的模型或默认模型
+        source_name: 存储到向量库的来源标识；不传则使用 path 本身
 
     Returns:
         {"name": str, "chunks": int, "source": str, "added_at": str}
@@ -50,12 +55,13 @@ def ingest_file(
     import datetime
     p = Path(path)
     kb_name = name or default_name(p)
-    print(f"[KB] 导入文件: {p.name} → 集合: {kb_name}")
+    source  = source_name or str(p)
+    print(f"[KB] 导入文件: {source_name or p.name} → 集合: {kb_name}")
 
     text = parse_file(p)
     chunks = chunk_text(text)
-    count = _store.add_chunks(kb_name, chunks, source=str(p), embed_model=embed_model or None)
-    return {"name": kb_name, "chunks": count, "source": str(p),
+    count = _store.add_chunks(kb_name, chunks, source=source, embed_model=embed_model or None, on_progress=on_progress)
+    return {"name": kb_name, "chunks": count, "source": source,
             "added_at": datetime.date.today().isoformat()}
 
 
@@ -168,6 +174,31 @@ def agentic_search(
     return _agentic_search(query, llm_call, collection_names=names, top_k=top_k)
 
 
+def level3_search(
+    user_text: str,
+    tool_chat: Callable,
+    kb_names: List[str],
+    top_k: int = 5,
+    max_iters: int = 5,
+    char_budget: int = 32000,
+    on_round: Optional[Callable] = None,
+) -> tuple:
+    """
+    Level 3 Agentic RAG：LLM 通过 Function Calling 自主决定检索策略。
+
+    Returns:
+        (hits, tool_events)
+    """
+    return _level3_search(user_text, tool_chat, kb_names,
+                          top_k=top_k, max_iters=max_iters, char_budget=char_budget,
+                          on_round=on_round)
+
+
+def format_kb_hits_for_context(hits: List[Dict[str, Any]]) -> str:
+    """将检索命中结果格式化为带信源标注的 C1 注入文本。"""
+    return _format_kb_hits_for_context(hits)
+
+
 # ──────────────────────────────────────────────────────────────
 # 管理接口
 # ──────────────────────────────────────────────────────────────
@@ -190,6 +221,16 @@ def collection_exists(name: str) -> bool:
 def list_sources(name: str) -> List[Dict[str, Any]]:
     """列出知识库内所有来源文件摘要（source / name / added_at / count）。"""
     return _store.list_sources(name)
+
+
+def peek_chunks(name: str, source: str, limit: int = 100) -> List[Dict[str, Any]]:
+    """获取知识库内指定来源的前 limit 个分块（含 body 和 chunk_index）。"""
+    return _store.peek_chunks(name, source, limit)
+
+
+def warmup(model: str = None) -> None:
+    """预热嵌入模型（后台调用，首次导入无感延迟）。"""
+    _store.warmup(model)
 
 
 def delete_source(name: str, source: str) -> int:

@@ -202,6 +202,10 @@ class AppApi:
                     w.evaluate_js(f"window.__onStreamEvent({cancel_evt})")
                     return
             _flush()
+            # 若生成器提前返回（工具阶段被取消）仍需通知前端
+            if stop_flag.is_set():
+                cancel_evt = json.dumps({"type": "cancelled", "conv_id": conv_id})
+                w.evaluate_js(f"window.__onStreamEvent({cancel_evt})")
         except Exception as exc:
             _flush()
             err_evt = json.dumps(
@@ -224,7 +228,39 @@ class AppApi:
         return self._core.list_kb_collections()
 
     def kb_ingest_file(self, path: str, name: str = "", embed_model: str = "") -> Dict:
-        return self._core.kb_ingest_file(path, name, embed_model)
+        w = webview.windows[0]
+
+        def _progress(done: int, total: int) -> None:
+            payload = json.dumps({"path": path, "done": done, "total": total}, ensure_ascii=False)
+            w.evaluate_js(f"window.__onKbProgress({payload})")
+
+        return self._core.kb_ingest_file(path, name, embed_model, on_progress=_progress)
+
+    def kb_ingest_bytes(self, filename: str, b64data: str, name: str = "", embed_model: str = "") -> Dict:
+        """接收 base64 文件内容（WebView2 拖拽无法获取路径时使用），写临时文件后导入。"""
+        import base64 as _b64, tempfile, os as _os
+        w = webview.windows[0]
+
+        def _progress(done: int, total: int) -> None:
+            payload = json.dumps({"path": filename, "done": done, "total": total}, ensure_ascii=False)
+            w.evaluate_js(f"window.__onKbProgress({payload})")
+
+        tmp_path = None
+        try:
+            data = _b64.b64decode(b64data)
+            suffix = _os.path.splitext(filename)[1] or '.bin'
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, prefix="acompallm_") as tmp:
+                tmp.write(data)
+                tmp_path = tmp.name
+            return self._core.kb_ingest_file(tmp_path, name, embed_model, on_progress=_progress, source_name=filename)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        finally:
+            if tmp_path:
+                try:
+                    _os.unlink(tmp_path)
+                except Exception:
+                    pass
 
     def kb_ingest_folder(self, folder: str, name: str = "", embed_model: str = "") -> Dict:
         return self._core.kb_ingest_folder(folder, name, embed_model)
@@ -239,8 +275,16 @@ class AppApi:
     def kb_list_sources(self, collection_name: str) -> List[Dict]:
         return self._core.kb_list_sources(collection_name)
 
+    def kb_peek_chunks(self, collection_name: str, source: str, limit: int = 100) -> List[Dict]:
+        return self._core.kb_peek_chunks(collection_name, source, limit)
+
     def kb_delete_source(self, collection_name: str, source: str) -> Dict:
         return self._core.kb_delete_source(collection_name, source)
+
+    def conv_set_kb_names(self, conv_id: str, kb_names: List) -> Dict:
+        """持久化对话绑定的知识库列表。"""
+        ok = self._core.conv_set_kb_names(conv_id, kb_names)
+        return {"ok": ok}
 
     def open_file_dialog(self) -> str:
         result = webview.windows[0].create_file_dialog(
@@ -259,24 +303,18 @@ class AppApi:
 
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _setup_ime() -> None:
-    """禁用 OS IM 模块，由前端 JS 内置拼音处理。
-
-    WSLg + QtWebEngine 环境中，系统 IME（fcitx5/ibus）存在两道死墙：
-      1. WSLg Wayland 合成器不支持 zwp_input_method_v1 协议，fcitx5 启动即崩溃；
-      2. 系统 fcitx5-frontend-qt6 编译自系统 Qt（6.4.x），与 PyQt6 内置 Qt（6.10.x）
-         ABI 不兼容，插件无法加载。
-    JS 内置拼音在所有平台（WSL2/Linux/Windows）均可正常工作，Ctrl+Space 切换。
-    """
-    # "none" 是 Qt 明确禁用 IM 的值；空字符串会回退到平台默认 IM 并消费 Ctrl+Space
-    os.environ["QT_IM_MODULE"] = "none"
-    if sys.platform != "win32":
-        os.environ["GTK_IM_MODULE"] = "none"
-        os.environ["XMODIFIERS"]    = ""
-    print("[AcompaLLM] IME: JS 内置拼音  切换快捷键: Ctrl+Space")
-
 
 def main() -> None:
+    # ── 尽早启动嵌入模型预热（与后续 GUI 初始化并行）────────────────────────
+    # 放在所有初始化步骤的最前面，最大化与 webview 启动的并行时间
+    def _warmup_embed():
+        try:
+            import kb
+            kb.warmup()
+        except Exception as exc:
+            print(f"[AcompaLLM] 嵌入模型预热失败: {exc}")
+    threading.Thread(target=_warmup_embed, daemon=True, name="embed-warmup").start()
+
     if not os.path.isdir(CLIENT_DIR):
         print(f"[错误] 找不到客户端目录: {CLIENT_DIR}")
         print("请确保 client/index.html 存在后再启动。")
@@ -302,8 +340,6 @@ def main() -> None:
             ])
         )
 
-    _setup_ime()
-
     port = _find_free_port(9127)
     _start_file_server(CLIENT_DIR, port)
     print(f"[AcompaLLM] 本地文件服务已启动: http://127.0.0.1:{port}/")
@@ -324,6 +360,7 @@ def main() -> None:
         text_select=True,
         zoomable=True,
         frameless=True,
+        easy_drag=False,
     )
 
     webview.start(debug=False, gui="edgechromium")
