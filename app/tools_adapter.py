@@ -202,12 +202,48 @@ def _calculator(args: Dict[str, Any]) -> Any:
         return {"error": f"计算失败: {exc}"}
 
 
+def _memory_search(args: Dict[str, Any]) -> Any:
+    """记忆库检索工具，搜索历史对话记忆。
+    
+    Args:
+        args: {"query": str, "person": str, "top_k": int}
+    
+    Returns:
+        List[Dict] 记忆检索结果，或 {"error": str}
+    """
+    try:
+        import memory as _mem_module
+    except ImportError:
+        return {"error": "记忆库模块未安装"}
+    
+    query = args.get("query", "").strip()
+    person = args.get("person", "").strip()
+    top_k = int(args.get("top_k", 5))
+    
+    if not query:
+        return {"error": "缺少参数 query"}
+    if not person:
+        return {"error": "缺少参数 person（记忆人名称）"}
+    
+    try:
+        # 简单的LLM调用函数（工具内部不依赖外部LLM）
+        def _simple_llm(msgs):
+            # 这里返回原始query，跳过改写（或由调用方提供真实LLM）
+            return query
+        
+        hits = _mem_module.search(person, query, top_k=top_k, llm_call=_simple_llm)
+        return hits if hits else []
+    except Exception as exc:
+        return {"error": f"记忆检索失败: {exc}"}
+
+
 # ──────────────────────────────────────────────────────────────
 # 工具注册表（在此添加新工具）
 # ──────────────────────────────────────────────────────────────
 TOOL_REGISTRY: Dict[str, Any] = {
     "web_search": _web_search,
     "calculator": _calculator,
+    "memory_search": _memory_search,
 }
 
 

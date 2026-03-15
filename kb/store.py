@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import os
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,12 +30,74 @@ _CHROMA_DIR = Path(os.getenv("CHROMA_DIR", "./data/chroma"))
 
 # 嵌入模型名（可通过环境变量覆盖）
 _EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-small-zh-v1.5")
+_ONNX_CACHE_DIR = Path(os.getenv("ONNX_CACHE_DIR", "./data/onnx_cache"))
 
 # ──────────────────────────────────────────────────────────────
 # 懒加载：ChromaDB 客户端 & 嵌入函数
 # ──────────────────────────────────────────────────────────────
 _client: Optional[chromadb.PersistentClient] = None
 _embed_fns: Dict[str, Any] = {}  # 按模型名缓存，支持多模型
+_legacy_embed_fns: Dict[str, Any] = {}  # 老集合兼容：sentence_transformer
+_onnx_lock = threading.Lock()
+
+
+class _SafeSentenceTransformerEF:
+    """CPU 安全兜底嵌入函数：规避部分环境下 meta tensor 迁移异常。"""
+
+    def __init__(self, model_name: str):
+        from sentence_transformers import SentenceTransformer
+
+        self._model_name = model_name
+        self._model = None
+        last_exc: Optional[Exception] = None
+
+        # 优先显式关闭 low_cpu_mem/device_map 自动分配
+        try:
+            self._model = SentenceTransformer(
+                model_name,
+                device="cpu",
+                model_kwargs={"low_cpu_mem_usage": False, "device_map": None},
+            )
+        except TypeError:
+            # 兼容旧版 sentence-transformers（不支持 model_kwargs）
+            self._model = SentenceTransformer(model_name, device="cpu")
+        except Exception as exc:
+            last_exc = exc
+
+        if self._model is None:
+            if last_exc:
+                raise last_exc
+            raise RuntimeError(f"加载嵌入模型失败: {model_name}")
+
+    @staticmethod
+    def name() -> str:
+        return "safe_sentence_transformer"
+
+    def get_config(self) -> Dict[str, Any]:
+        return {"model_name": self._model_name}
+
+    @staticmethod
+    def build_from_config(config: Dict[str, Any]):
+        model_from_cfg = (config or {}).get("model_name") or _EMBED_MODEL
+        return _SafeSentenceTransformerEF(model_from_cfg)
+
+    def embed_query(self, input):  # noqa: A002
+        return self.__call__(input)
+
+    def __call__(self, input):  # noqa: A002
+        import numpy as np
+
+        texts = [input] if isinstance(input, str) else list(input)
+        if not texts:
+            return []
+        vecs = self._model.encode(
+            texts,
+            batch_size=64,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        return np.asarray(vecs).tolist()
 
 
 def _get_client() -> chromadb.PersistentClient:
@@ -48,18 +111,156 @@ def _get_client() -> chromadb.PersistentClient:
     return _client
 
 
+def _onnx_cache_path(model_name: str) -> Path:
+    """将 HF 模型名映射为本地 ONNX 缓存目录。"""
+    safe = model_name.replace("/", "--")
+    return _ONNX_CACHE_DIR / safe
+
+
+def _try_onnx_embed_fn(model_name: str):
+    """
+    优先使用 ONNX Runtime 嵌入。
+    - 首次：从 HF 导出并保存到 data/onnx_cache/<model>
+    - 后续：直接从本地缓存加载，避免重复导出
+    失败时返回 None，由调用方回退 PyTorch。
+    """
+    try:
+        import numpy as np
+        from optimum.onnxruntime import ORTModelForFeatureExtraction
+        from transformers import AutoTokenizer
+
+        cache_dir = _onnx_cache_path(model_name)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        onnx_file = cache_dir / "model.onnx"
+
+        # 多线程并发保护：避免同一模型被重复导出
+        with _onnx_lock:
+            if onnx_file.exists():
+                print(f"[KB] 加载嵌入模型 (ONNX 本地): {cache_dir}")
+                tokenizer = AutoTokenizer.from_pretrained(str(cache_dir), local_files_only=True)
+                ort_model = ORTModelForFeatureExtraction.from_pretrained(str(cache_dir), local_files_only=True)
+            else:
+                print(f"[KB] 首次导出 ONNX 模型: {model_name} -> {cache_dir}")
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                ort_model = ORTModelForFeatureExtraction.from_pretrained(model_name, export=True)
+                ort_model.save_pretrained(str(cache_dir))
+                tokenizer.save_pretrained(str(cache_dir))
+                print(f"[KB] ONNX 导出完成并已缓存: {cache_dir}")
+
+        class _OnnxEF:
+            """ChromaDB 兼容 embedding function。"""
+
+            def __init__(self, tok, mdl, model_name_for_cfg: str):
+                self._tok = tok
+                self._mdl = mdl
+                self._model_name = model_name_for_cfg
+
+            @staticmethod
+            def name() -> str:
+                return "onnx_feature_extraction"
+
+            def get_config(self) -> Dict[str, Any]:
+                return {"model_name": self._model_name}
+
+            @staticmethod
+            def build_from_config(config: Dict[str, Any]):
+                model_from_cfg = (config or {}).get("model_name") or _EMBED_MODEL
+                ef = _try_onnx_embed_fn(model_from_cfg)
+                if ef is None:
+                    raise ValueError(f"无法根据配置构建 ONNX EmbeddingFunction: {model_from_cfg}")
+                return ef
+
+            def embed_query(self, input):  # noqa: A002
+                # Chroma 在 query 路径会优先调用 embed_query
+                return self.__call__(input)
+
+            def __call__(self, input):  # noqa: A002
+                texts = [input] if isinstance(input, str) else list(input)
+                if not texts:
+                    return []
+
+                out: List[List[float]] = []
+                batch_size = 64
+                for i in range(0, len(texts), batch_size):
+                    batch = texts[i: i + batch_size]
+                    enc = self._tok(
+                        batch,
+                        padding=True,
+                        truncation=True,
+                        max_length=512,
+                        return_tensors="np",
+                    )
+                    res = self._mdl(**enc)
+
+                    h = res.last_hidden_state
+                    cls = h[:, 0, :]  # BGE 推荐 CLS 池化
+                    vecs = np.asarray(cls)
+
+                    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+                    norms[norms == 0] = 1.0
+                    vecs = vecs / norms
+                    out.extend(vecs.tolist())
+                return out
+
+        print(f"[KB] ONNX 嵌入模型加载完成: {model_name}")
+        return _OnnxEF(tokenizer, ort_model, model_name)
+    except Exception as exc:
+        print(f"[KB] ONNX 加载失败，回退 PyTorch: {exc}")
+        return None
+
+
 def _get_embed_fn(model: str = None):
-    """返回 ChromaDB 兼容的嵌入函数（sentence-transformers），按模型名缓存。"""
+    """返回 ChromaDB 兼容的嵌入函数，按模型名缓存。优先 ONNX，回退 PyTorch。"""
     global _embed_fns
     m = model or _EMBED_MODEL
     if m not in _embed_fns:
-        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-        print(f"[KB] 加载嵌入模型: {m}")
-        _embed_fns[m] = SentenceTransformerEmbeddingFunction(
-            model_name=m,
-            normalize_embeddings=True,
-        )
+        # 优先尝试 ONNX backend（需要 optimum[onnxruntime]）
+        ef = _try_onnx_embed_fn(m)
+        if ef is None:
+            # 回退：经典 PyTorch（chromadb 内置封装）
+            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+            print(f"[KB] 加载嵌入模型 (PyTorch): {m}")
+            try:
+                ef = SentenceTransformerEmbeddingFunction(
+                    model_name=m,
+                    normalize_embeddings=True,
+                )
+            except Exception as exc:
+                msg = str(exc)
+                if "meta tensor" in msg.lower() or "to_empty" in msg.lower():
+                    print(f"[KB] PyTorch 嵌入加载触发 meta tensor 异常，切换 CPU 安全兜底: {exc}")
+                    ef = _SafeSentenceTransformerEF(m)
+                else:
+                    raise
+        _embed_fns[m] = ef
     return _embed_fns[m]
+
+
+def _get_legacy_embed_fn(model: str = None):
+    """返回 Chroma 内置 sentence_transformer 嵌入函数（用于旧集合兼容）。"""
+    global _legacy_embed_fns
+    m = model or _EMBED_MODEL
+    if m not in _legacy_embed_fns:
+        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+        print(f"[KB] 加载嵌入模型 (Legacy sentence_transformer): {m}")
+        try:
+            _legacy_embed_fns[m] = SentenceTransformerEmbeddingFunction(
+                model_name=m,
+                normalize_embeddings=True,
+            )
+        except Exception as exc:
+            msg = str(exc)
+            if "meta tensor" in msg.lower() or "to_empty" in msg.lower():
+                print(f"[KB] Legacy 嵌入加载触发 meta tensor 异常，切换 CPU 安全兜底: {exc}")
+                _legacy_embed_fns[m] = _SafeSentenceTransformerEF(m)
+            else:
+                raise
+    return _legacy_embed_fns[m]
+
+
+def _is_embedding_conflict(exc: Exception) -> bool:
+    msg = str(exc)
+    return "Embedding function conflict" in msg or "embedding function already exists" in msg
 
 
 def warmup(model: str = None) -> None:
@@ -85,16 +286,30 @@ def _get_or_create_collection(display_name: str, embed_model: str = None) -> chr
     client = _get_client()
     col_name = _col_id(display_name)
     # 若集合已存在，优先沿用其原始 embed_model（保证向量空间一致）
+    col_exists = True
     try:
         existing = client.get_collection(col_name)
         model = (existing.metadata or {}).get("embed_model") or embed_model or _EMBED_MODEL
     except Exception:
+        col_exists = False
         model = embed_model or _EMBED_MODEL
-    return client.get_or_create_collection(
-        name=col_name,
-        embedding_function=_get_embed_fn(model),
-        metadata={"display_name": display_name, "embed_model": model},
-    )
+
+    ef = _get_embed_fn(model)
+    try:
+        return client.get_or_create_collection(
+            name=col_name,
+            embedding_function=ef,
+            metadata={"display_name": display_name, "embed_model": model},
+        )
+    except Exception as exc:
+        # 旧集合绑定了 sentence_transformer 时，自动回退 legacy EF
+        if col_exists and _is_embedding_conflict(exc):
+            print(f"[KB] 发现旧集合 embedding 配置，自动回退 legacy: {display_name}")
+            return client.get_collection(
+                col_name,
+                embedding_function=_get_legacy_embed_fn(model),
+            )
+        raise
 
 
 # ──────────────────────────────────────────────────────────────
@@ -169,7 +384,14 @@ def search(
     try:
         col_info = client.get_collection(col_name)
         embed_model = (col_info.metadata or {}).get("embed_model", _EMBED_MODEL)
-        col = client.get_collection(col_name, embedding_function=_get_embed_fn(embed_model))
+        try:
+            col = client.get_collection(col_name, embedding_function=_get_embed_fn(embed_model))
+        except Exception as exc:
+            if _is_embedding_conflict(exc):
+                print(f"[KB] 检索命中旧集合 embedding 配置，回退 legacy: {display_name}")
+                col = client.get_collection(col_name, embedding_function=_get_legacy_embed_fn(embed_model))
+            else:
+                raise
     except Exception:
         return []
 

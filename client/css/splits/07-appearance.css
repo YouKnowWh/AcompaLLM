@@ -1,0 +1,86 @@
+/* ── Appearance settings ─────────────────────────────────────────────── */
+.theme-option, .bg-type-option, .gradient-option, .image-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  cursor: pointer;
+  transition: all .12s;
+  flex: 1;
+  min-width: 0;
+}
+.theme-option:hover, .bg-type-option:hover, .gradient-option:hover, .image-option:hover {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+.theme-option.active, .bg-type-option.active, .gradient-option.active, .image-option.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.theme-preview, .bg-preview, .gradient-preview, .image-preview {
+  width: 60px;
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.theme-preview.dark {
+  background: linear-gradient(135deg, #0d1117 50%, #161b22 50%);
+}
+.theme-preview.light {
+  background: linear-gradient(135deg, #ffffff 50%, #f6f8fa 50%);
+}
+.theme-preview.auto {
+  background: linear-gradient(135deg, #0d1117 50%, #ffffff 50%);
+}
+.bg-preview.color {
+  background: #0d1117;
+}
+.bg-preview.gradient {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+.bg-preview.image {
+  background: linear-gradient(45deg, #1c2333 25%, transparent 25%),
+              linear-gradient(-45deg, #1c2333 25%, transparent 25%),
+              linear-gradient(45deg, transparent 75%, #1c2333 75%),
+              linear-gradient(-45deg, transparent 75%, #1c2333 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
+.gradient-preview.deep-space {
+  background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+}
+.gradient-preview.sunset {
+  background: linear-gradient(135deg, #ff7e5f, #feb47b);
+}
+.gradient-preview.ocean {
+  background: linear-gradient(135deg, #2193b0, #6dd5ed);
+}
+.gradient-preview.forest {
+  background: linear-gradient(135deg, #11998e, #38ef7d);
+}
+.gradient-preview.purple-haze {
+  background: linear-gradient(135deg, #8a2387, #e94057, #f27121);
+}
+.image-preview.none {
+  background: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.image-preview.none::before {
+  content: "无";
+}
+.image-preview.custom {
+  background: linear-gradient(45deg, var(--accent) 25%, transparent 25%),
+              linear-gradient(-45deg, var(--accent) 25%, transparent 25%),
+              linear-gradient(45deg, transparent 75%, var(--accent) 75%),
+              linear-gradient(-45deg, transparent 75%, var(--accent) 75%);
+  background-size: 10px 10px;
+  background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+}

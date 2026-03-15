@@ -1,0 +1,129 @@
+/* ── Input area ──────────────────────────────────────────────────────── */
+#inputArea {
+  border-top: 1px solid var(--border);
+  padding: 12px 20px 16px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(8px);
+  flex-shrink: 0;
+}
+.input-toolbar {
+  display: flex;
+  gap: 6px;
+  margin: 0 auto 8px;
+  max-width: 780px;
+}
+.tool-toggle {
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--btn-bg);
+  backdrop-filter: blur(4px);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .12s;
+  line-height: 1.4;
+}
+.tool-toggle:hover { border-color: var(--muted); color: var(--text); }
+.tool-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.input-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  max-width: 780px;
+  margin: 0 auto;
+}
+.attach-list {
+  max-width: 780px;
+  margin: 0 auto 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 4px 8px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--btn-bg);
+  color: var(--text);
+  font-size: 12px;
+}
+.attach-chip-thumb {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.attach-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attach-chip-del {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+.attach-chip-del:hover { color: var(--danger); }
+#msgInput {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 10px 14px;
+  resize: none;
+  outline: none;
+  max-height: 200px;
+  overflow-y: auto;
+  transition: border-color .15s;
+}
+#msgInput:focus { border-color: var(--accent); }
+#msgInput::placeholder { color: var(--muted); }
+#sendBtn {
+  width: 40px; height: 40px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--r-sm);
+  color: #0d1117;
+  cursor: pointer;
+  font-size: 16px;
+  flex-shrink: 0;
+  transition: filter .12s;
+  display: flex; align-items: center; justify-content: center;
+}
+#sendBtn:hover:not(:disabled) { filter: brightness(1.15); }
+#sendBtn:disabled { opacity: .4; cursor: not-allowed; }
+#cancelBtn {
+  width: 40px; height: 40px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  flex-shrink: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all .12s;
+}
+#cancelBtn.show { display: flex; }
+#cancelBtn:hover { border-color: var(--danger); color: var(--danger); }
